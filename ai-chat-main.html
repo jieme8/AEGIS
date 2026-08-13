@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>AI 对话</title>
+<style>
+  /* ============================================================
+   * 设计目标：对话区域即页面主窗口
+   *  - 全屏单栏布局，无任何侧边栏 / 辅助栏
+   *  - 对话列沿垂直中线居中，占据主可视区域
+   *  - 顶部条为「主窗口标题栏」（非侧栏），输入区常驻底部
+   * ============================================================ */
+  :root {
+    --bg:        #0a0d14;
+    --bg-2:      #0e131d;
+    --surface:   rgba(255,255,255,0.025);
+    --line:      rgba(255,255,255,0.07);
+    --txt:       #e8edf6;
+    --txt-dim:   #8b95a8;
+    --accent:    #4dd0ff;
+    --accent-2:  #2f6df6;
+    --user-1:    #3a7bff;
+    --user-2:    #2552d8;
+    --danger:    #ff5d6c;
+    --radius:    18px;
+    --col-w:     880px;        /* 对话列最大宽度（桌面端居中） */
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+
+  body {
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(47,109,246,0.18), transparent 60%),
+      radial-gradient(900px 500px at 50% 110%, rgba(77,208,255,0.10), transparent 60%),
+      linear-gradient(180deg, var(--bg), var(--bg-2));
+    color: var(--txt);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+                 "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 15px; line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;                 /* 滚动交给内部对话列 */
+  }
+
+  /* ---------- 主窗口：贯穿视口、垂直居中 ---------- */
+  .main {
+    position: relative;
+    width: 100%;
+    max-width: var(--col-w);
+    height: 100dvh;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    /* 极淡两侧分线，强调"主窗口"边界，但不构成侧栏 */
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+  }
+
+  /* ---------- 顶部标题栏（主窗口的一部分，非侧栏） ---------- */
+  .topbar {
+    flex: 0 0 auto;
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 20px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(6px);
+  }
+  .topbar .dot-live {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #38d39f; box-shadow: 0 0 10px #38d39f; flex: 0 0 auto;
+  }
+  .topbar .title { font-weight: 600; letter-spacing: .5px; }
+  .topbar .sub { font-size: 12px; color: var(--txt-dim); margin-left: 2px; }
+  .topbar .spacer { flex: 1 1 auto; }
+  .topbar .clear {
+    background: transparent; color: var(--txt-dim);
+    border: 1px solid var(--line); border-radius: 10px;
+    padding: 7px 13px; font-size: 13px; cursor: pointer;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .topbar .clear:hover { color: var(--txt); border-color: var(--txt-dim); background: var(--surface); }
+
+  /* ---------- 对话列（可滚动主区域） ---------- */
+  .messages {
+    flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;
+    padding: 22px 18px 12px;
+    display: flex; flex-direction: column; gap: 16px;
+    scroll-behavior: smooth;
+  }
+  .messages::-webkit-scrollbar { width: 9px; }
+  .messages::-webkit-scrollbar-thumb { background: var(--line); border-radius: 9px; }
+  .messages::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.16); }
+
+  .msg { display: flex; gap: 11px; align-items: flex-start; max-width: 100%; }
+  .msg .who {
+    width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; color: #fff; user-select: none;
+  }
+  .msg .col { min-width: 0; flex: 1 1 auto; display: flex; flex-direction: column; }
+  .msg .bubble {
+    max-width: 76%; padding: 12px 15px; border-radius: var(--radius);
+    white-space: pre-wrap; word-break: break-word; overflow-wrap: anywhere;
+  }
+  .msg .time { font-size: 11px; color: var(--txt-dim); margin-top: 5px; }
+
+  /* AI 左对齐 */
+  .msg.ai .who { background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
+  .msg.ai .bubble {
+    background: rgba(255,255,255,0.04); border: 1px solid var(--line);
+    border-top-left-radius: 5px; align-self: flex-start;
+  }
+  .msg.ai .time { align-self: flex-start; }
+  /* 用户右对齐 */
+  .msg.user { flex-direction: row-reverse; }
+  .msg.user .who { background: linear-gradient(135deg, #6b7bff, var(--user-1)); }
+  .msg.user .col { align-items: flex-end; }
+  .msg.user .bubble {
+    background: linear-gradient(135deg, var(--user-1), var(--user-2));
+    color: #fff; border-top-right-radius: 5px;
+  }
+
+  /* 打字指示器 */
+  .msg.ai.typing .bubble { display: inline-flex; gap: 5px; padding: 15px 17px; align-self: flex-start; }
+  .msg.typing .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--txt-dim);
+    animation: blink 1.2s infinite ease-in-out;
+  }
+  .msg.typing .dot:nth-child(2) { animation-delay: .2s; }
+  .msg.typing .dot:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink {
+    0%, 60%, 100% { opacity: .3; transform: translateY(0); }
+    30% { opacity: 1; transform: translateY(-3px); }
+  }
+
+  /* 错误条 */
+  .msg.ai.error .bubble { background: rgba(255,93,108,0.12); border: 1px solid var(--danger); color: #ffd0d4; }
+
+  /* ---------- 空状态（居中引导） ---------- */
+  .empty {
+    flex: 1 1 auto; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    color: var(--txt-dim); gap: 10px; padding: 20px;
+  }
+  .empty .glyph {
+    width: 64px; height: 64px; border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, rgba(77,208,255,0.18), rgba(47,109,246,0.18));
+    border: 1px solid var(--line);
+    box-shadow: 0 0 30px rgba(47,109,246,0.25);
+    margin-bottom: 6px;
+  }
+  .empty .glyph svg { width: 30px; height: 30px; fill: var(--accent); }
+  .empty h1 { font-size: 18px; color: var(--txt); font-weight: 600; letter-spacing: .5px; }
+  .empty p { font-size: 13px; max-width: 320px; }
+
+  /* ---------- 输入区（主窗口底部常驻） ---------- */
+  .composer {
+    flex: 0 0 auto;
+    display: flex; align-items: flex-end; gap: 10px;
+    padding: 12px 16px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--line);
+    background: rgba(10,13,20,0.6);
+    backdrop-filter: blur(10px);
+  }
+  .composer textarea {
+    flex: 1 1 auto; resize: none;
+    max-height: 150px; min-height: 48px;
+    padding: 13px 15px; border-radius: 16px;
+    background: rgba(255,255,255,0.05); color: var(--txt);
+    border: 1px solid var(--line); outline: none;
+    font: inherit; line-height: 1.5;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(77,208,255,0.12); }
+  .composer textarea::placeholder { color: var(--txt-dim); }
+  .composer .send {
+    flex: 0 0 auto; width: 48px; height: 48px; border-radius: 16px;
+    border: none; cursor: pointer; color: #fff;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .15s, transform .1s, filter .15s;
+  }
+  .composer .send svg { width: 21px; height: 21px; fill: currentColor; }
+  .composer .send:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.08); }
+  .composer .send:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ---------- 移动端：全宽、边线收起 ---------- */
+  @media (max-width: 600px) {
+    :root { --col-w: 100%; }
+    .main { border-left: none; border-right: none; }
+    .msg .bubble { max-width: 82%; }
+    .topbar .sub { display: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="main">
+    <header class="topbar">
+      <span class="dot-live" aria-hidden="true"></span>
+      <span class="title">AI 对话</span>
+      <span class="sub">· 本地模拟响应</span>
+      <span class="spacer"></span>
+      <button class="clear" id="clearBtn" type="button">清空</button>
+    </header>
+
+    <main class="messages" id="messages" aria-live="polite">
+      <div class="empty" id="emptyState">
+        <div class="glyph">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8l-4 4V6a2 2 0 0 1 2-2z"/></svg>
+        </div>
+        <h1>开始你的对话</h1>
+        <p>这里是主对话窗口。发送消息后，AI 的回复会以打字状态提示，并在就绪后展示。</p>
+      </div>
+    </main>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <textarea id="input" placeholder="输入消息…（Enter 发送，Shift+Enter 换行）" rows="1"></textarea>
+      <button class="send" id="sendBtn" type="submit" aria-label="发送" disabled>
+        <svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z"/></svg>
+      </button>
+    </form>
+  </div>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ============================================================
+   * AI 对话主窗口 —— 单文件、零依赖、响应式
+   * 全屏单栏（无侧边栏）；AI 回复当前为本地模拟，
+   * 接入真实大模型只需替换 callLLM() 并改写 getAIResponse()。
+   * ============================================================ */
+
+  // ---------- 配置 ----------
+  const CONFIG = {
+    storageKey: "ai-chat-main-history-v1",
+    typingMinMs: 600,
+    typingMaxMs: 1400,
+    maxChars: 4000,            // 单条消息上限，防超长输入
+  };
+
+  // ---------- DOM 引用 ----------
+  const messagesEl = document.getElementById("messages");
+  const emptyEl    = document.getElementById("emptyState");
+  const composerEl = document.getElementById("composer");
+  const inputEl    = document.getElementById("input");
+  const sendBtn    = document.getElementById("sendBtn");
+  const clearBtn   = document.getElementById("clearBtn");
+
+  // ---------- 会话状态 ----------
+  const state = {
+    history: [],               // [{ role: "user"|"ai", text, time }]
+    busy: false,               // 等待 AI 回复中（防重复发送）
+  };
+
+  // ---------- 工具 ----------
+  const clamp = (v, a, b) => (v < a ? a : (v > b ? b : v));
+  const randInt = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
+  const now = () => Date.now();
+  const formatTime = (ts) =>
+    new Date(ts).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+
+  // localStorage 在隐私模式 / 禁用时可能抛错，做容错
+  function loadHistory() {
+    try {
+      const raw = localStorage.getItem(CONFIG.storageKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) state.history = parsed;
+      }
+    } catch (e) { /* 忽略：回退为空历史 */ }
+  }
+  function saveHistory() {
+    try { localStorage.setItem(CONFIG.storageKey, JSON.stringify(state.history)); }
+    catch (e) { /* 忽略：不阻断对话 */ }
+  }
+
+  // ---------- 空状态 ----------
+  function updateEmptyState() {
+    if (emptyEl) emptyEl.style.display = messagesEl.children.length > 1 ? "none" : "flex";
+  }
+
+  // ---------- 渲染 ----------
+  function scrollToBottom() {
+    requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
+  }
+
+  function appendMessage(role, text, time) {
+    const ts = time || now();
+    if (emptyEl && emptyEl.style.display !== "none") emptyEl.style.display = "none";
+
+    const wrap = document.createElement("div");
+    wrap.className = `msg ${role}`;
+
+    const who = document.createElement("div");
+    who.className = "who";
+    who.textContent = role === "user" ? "我" : "AI";
+
+    const col = document.createElement("div");
+    col.className = "col";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;            // textContent 防 XSS
+
+    const timeEl = document.createElement("div");
+    timeEl.className = "time";
+    timeEl.textContent = formatTime(ts);
+
+    col.appendChild(bubble);
+    col.appendChild(timeEl);
+    wrap.appendChild(who);
+    wrap.appendChild(col);
+    messagesEl.appendChild(wrap);
+
+    state.history.push({ role, text, time: ts });
+    scrollToBottom();
+    return wrap;
+  }
+
+  function showTyping() {
+    const wrap = document.createElement("div");
+    wrap.className = "msg ai typing";
+    wrap.innerHTML =
+      '<div class="who">AI</div>' +
+      '<div class="col"><div class="bubble">' +
+      '<span class="dot"></span><span class="dot"></span><span class="dot"></span>' +
+      '</div></div>';
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+    return wrap;
+  }
+
+  function showError(text) {
+    const wrap = document.createElement("div");
+    wrap.className = "msg ai error";
+    wrap.innerHTML = '<div class="who">AI</div>';
+    const col = document.createElement("div");
+    col.className = "col";
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    bubble.textContent = text;
+    col.appendChild(bubble);
+    wrap.appendChild(col);
+    messagesEl.appendChild(wrap);
+    scrollToBottom();
+  }
+
+  // ---------- 本地模拟回复 ----------
+  const truncate = (s, n = 24) => (s.length > n ? s.slice(0, n) + "…" : s);
+
+  function buildSimulatedReply(userText) {
+    const text = userText.trim();
+    if (/^(你好|您好|hi|hello|嗨|在吗|在么)/i.test(text)) {
+      return "你好！我是 AI 助手（当前为本地模拟响应）。有什么可以帮你的吗？";
+    }
+    if (/谢谢|感谢|多谢|thx|thank/i.test(text)) {
+      return "不客气，随时欢迎继续交流。";
+    }
+    if (text.endsWith("?") || text.endsWith("？") || /怎么|如何|为什么|是什么/i.test(text)) {
+      return `关于“${truncate(text)}”，这是一个本地模拟回答，用于演示主窗口式对话界面。\n` +
+             `若接入真实大模型 API，这里将返回更具针对性的内容。你可以补充更多背景，我会进一步分析。`;
+    }
+    const replies = [
+      `我收到了你的消息：“${truncate(text)}”。这是本地模拟回复，用于展示对话交互流程。`,
+      `明白，你提到的是“${truncate(text)}”。接入真实大模型后，这里会给出更贴合的回应。`,
+      `关于“${truncate(text)}”，我理解你的意思。能否再补充一些细节，方便我给出更准确的答复？`,
+    ];
+    return replies[Math.floor(Math.random() * replies.length)];
+  }
+
+  /* 接入真实大模型（如 OpenRouter）时实现并替换下方调用：
+   * async function callLLM(messages) {
+   *   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+   *     method: "POST",
+   *     headers: { "Content-Type": "application/json",
+   *                "Authorization": "Bearer " + API_KEY },
+   *     body: JSON.stringify({ model: "xxx", messages })
+   *   });
+   *   if (!res.ok) throw new Error("API " + res.status);
+   *   const data = await res.json();
+   *   return data.choices[0].message.content;
+   * }
+   */
+  async function getAIResponse(userText) {
+    await new Promise((r) => setTimeout(r, randInt(CONFIG.typingMinMs, CONFIG.typingMaxMs)));
+    return buildSimulatedReply(userText);
+  }
+
+  // ---------- 发送流程 ----------
+  function setBusy(busy) {
+    state.busy = busy;
+    sendBtn.disabled = busy || inputEl.value.trim() === "";
+    inputEl.disabled = busy;
+  }
+
+  async function handleSend() {
+    const raw = inputEl.value.trim();
+    if (!raw || state.busy) return;
+    if (raw.length > CONFIG.maxChars) {
+      showError(`消息过长，请控制在 ${CONFIG.maxChars} 字以内。`);
+      return;
+    }
+
+    appendMessage("user", raw);
+    inputEl.value = "";
+    autoGrow();
+    updateSendState();
+    setBusy(true);
+
+    const typingEl = showTyping();
+    try {
+      const reply = await getAIResponse(raw);
+      typingEl.remove();
+      appendMessage("ai", reply);
+      saveHistory();
+    } catch (err) {
+      typingEl.remove();
+      showError("抱歉，AI 响应失败：" + (err && err.message ? err.message : "未知错误"));
+    } finally {
+      setBusy(false);
+      inputEl.focus();
+      updateEmptyState();
+    }
+  }
+
+  // ---------- 输入框交互 ----------
+  function autoGrow() {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 150) + "px";
+  }
+  function updateSendState() {
+    if (!state.busy) sendBtn.disabled = inputEl.value.trim() === "";
+  }
+
+  function bindEvents() {
+    composerEl.addEventListener("submit", (e) => { e.preventDefault(); handleSend(); });
+    inputEl.addEventListener("input", () => { autoGrow(); updateSendState(); });
+    inputEl.addEventListener("keydown", (e) => {
+      // Enter 发送，Shift+Enter 换行（兼容中文输入法 composition）
+      if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        handleSend();
+      }
+    });
+    clearBtn.addEventListener("click", () => {
+      if (state.busy) return;
+      state.history = [];
+      messagesEl.innerHTML = "";
+      messagesEl.appendChild(emptyEl);   // 恢复空状态节点
+      updateEmptyState();
+      saveHistory();
+      inputEl.focus();
+    });
+  }
+
+  // ---------- 初始化 ----------
+  function init() {
+    loadHistory();
+    const snapshot = state.history;
+    state.history = [];
+    for (const item of snapshot) {
+      appendMessage(item.role, item.text, item.time);
+    }
+    updateEmptyState();
+    bindEvents();
+    updateSendState();
+    inputEl.focus();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
