@@ -331,11 +331,18 @@
   /* ===== 组件 ID 标注（调试/指代用，可开关） ===== */
   .dev-label {
     position: absolute; top: 3px; left: 3px; z-index: 30;
+    display: inline-flex; align-items: baseline; gap: 7px;
     font-size: 10px; letter-spacing: 1px; font-family: var(--mono);
     color: #fff; background: rgba(177,75,255,0.92);     /* 实心高对比底色，提升辨识度 */
     border: 1px solid rgba(255,255,255,0.4); border-radius: 3px;
     padding: 2px 6px; pointer-events: none; white-space: nowrap;
     box-shadow: 0 0 8px rgba(177,75,255,0.55);
+  }
+  /* 标签内分段：ID 与实时坐标左右对齐，坐标以竖线分隔并着色，便于快速读取 */
+  .dev-label .dl-id { font-weight: 700; color: #fff; }
+  .dev-label .dl-coord {
+    font-weight: 400; color: var(--cyan); letter-spacing: 0; white-space: nowrap;
+    border-left: 1px solid rgba(255,255,255,0.35); padding-left: 7px;
   }
   body:not(.dev-mode) .dev-label { display: none; }   /* 默认隐藏，开启 dev-mode 才显示 */
 
@@ -421,6 +428,8 @@
   .dev-label { pointer-events: auto; cursor: pointer; transition: filter .12s, background .12s; }
   .dev-label:hover { filter: brightness(1.35); }
   .dev-label.copied { background: #00f0ff !important; color: #04060c !important; }
+  .dev-label.copied .dl-id,
+  .dev-label.copied .dl-coord { color: #04060c !important; border-color: transparent !important; }
 
   /* 中央环形波形热区：编辑模式下可悬停选中（画布上的特效无法单独 DOM 悬停，用热区弥补） */
   .dev-zone { position: fixed; pointer-events: none; }
@@ -431,7 +440,7 @@
     z-index: 4;                                  /* 高于画布(2)，低于 HUD(7)/对话(11) */
   }
   .dev-zone-bars {
-    left: 2%; right: 2%; bottom: 3%;
+    left: 30px; right: 2%; bottom: 0; top: auto;
     height: 38vh;
     z-index: 4;                                  /* 高于画布(2)，低于 HUD/对话 */
   }
@@ -762,13 +771,13 @@
   // ---------- 黑客数据流拖拽控制器（位置可调 + localStorage 持久化） ----------
   const HACKER_LS_KEY = "cyber-hacker-pos-v1";
   const hackerDragZone = document.getElementById("hackerDragZone");
-  let hackerPos = { x: 24, y: 96 };             // 数据流区域左上角偏移（默认左侧）
+  let hackerPos = { x: 296, y: 88 };            // 数据流区域左上角偏移（默认坐标 296,88）
   let hackerDrag = null;                          // 拖拽状态
 
   // 从 localStorage 恢复位置（容错）；已重置为默认位置
   function loadHackerPos() {
     try { localStorage.removeItem(HACKER_LS_KEY); } catch(e) {/* ignore */}
-    return null;                                       // 强制使用默认 {x:24, y:96}
+    return null;                                       // 强制使用默认 {x:296, y:88}
   }
   function saveHackerPos() {
     try { localStorage.setItem(HACKER_LS_KEY, JSON.stringify(hackerPos)); } catch (e) { /* 忽略 */ }
@@ -1544,32 +1553,40 @@
     // 生成标签（data-dev-nolabel 的组件只进清单、不出画布标签，避免顶部堆叠）
     const elements = document.querySelectorAll("[data-dev-id]");
     elements.forEach((el) => {
-      if (el.hasAttribute("data-dev-nolabel")) return;
+      if (el.hasAttribute("data-dev-nolabel")) return;   // 背景全屏层不挂画布标签
       const id = el.getAttribute("data-dev-id");
       const tag = document.createElement("span");
       tag.className = "dev-label";
-      tag.dataset.copyId = id;                       // 复制永远用纯 ID（不受坐标后缀影响）
-      tag.textContent = id;
+      tag.dataset.copyId = id;                            // 复制永远用纯 ID（不受坐标后缀影响）
+      // 结构化标签：ID 与实时坐标分两段，便于对齐与单独更新
+      const idEl = document.createElement("span");
+      idEl.className = "dl-id";
+      idEl.textContent = id;
+      const coordEl = document.createElement("span");
+      coordEl.className = "dl-coord";
+      coordEl.textContent = "";                           // 坐标在编辑模式开启后实时填充
+      tag.appendChild(idEl);
+      tag.appendChild(coordEl);
       el.appendChild(tag);
     });
 
-    // 编辑模式下，为可定位组件（黑客数据流 / 对话窗口）实时显示坐标
-    const COORD_IDS = ["fx-hacker-stream", "chat-panel"];
+    // 编辑模式下，为【所有】带标签的组件实时显示坐标（X/Y；可缩放的对话窗口附带 W×H）
+    const SHOW_SIZE_IDS = ["chat-panel"];
     let coordTimer = null;
     function updateCoordLabels() {
       document.querySelectorAll(".dev-label").forEach((tag) => {
-        const id = tag.dataset.copyId;
-        if (COORD_IDS.indexOf(id) === -1) return;
+        const coordEl = tag.querySelector(".dl-coord");
+        if (!coordEl) return;
         const host = tag.parentElement;
         if (!host) return;
         const r = host.getBoundingClientRect();
-        let coord;
-        if (id === "chat-panel") {
-          coord = `  ${Math.round(r.left)},${Math.round(r.top)}  ${Math.round(r.width)}×${Math.round(r.height)}`;
-        } else {
-          coord = `  ${Math.round(r.left)},${Math.round(r.top)}`;
+        const x = Math.round(r.left);
+        const y = Math.round(r.top);
+        let coord = `X:${x} Y:${y}`;
+        if (SHOW_SIZE_IDS.indexOf(tag.dataset.copyId) !== -1) {
+          coord += `  ${Math.round(r.width)}×${Math.round(r.height)}`;
         }
-        tag.textContent = id + coord;
+        coordEl.textContent = coord;
       });
     }
     function startCoordTimer() {
@@ -1579,10 +1596,8 @@
     }
     function stopCoordTimer() {
       if (coordTimer) { clearInterval(coordTimer); coordTimer = null; }
-      // 还原为纯 ID，避免隐藏后残留坐标
-      document.querySelectorAll(".dev-label").forEach((tag) => {
-        if (COORD_IDS.indexOf(tag.dataset.copyId) !== -1) tag.textContent = tag.dataset.copyId;
-      });
+      // 关闭编辑模式时清空坐标，避免残留
+      document.querySelectorAll(".dev-label .dl-coord").forEach((c) => { c.textContent = ""; });
     }
 
     // 悬停 / 选中：亮色描边 + 底部读数告知当前项
