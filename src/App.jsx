@@ -24,7 +24,6 @@ import { BOOT_MS, SEQUENCE } from "./lib/bootTimeline.js";
 // 入场时序 el → 真实 DOM 选择器（与 bootTimeline.SEQUENCE 一一对应）
 const SEQ_SELECTOR = {
   title: ".title-wrap",
-  "hud-tr": ".hud.tr",
   stage: "#stage",
   "form-switch": ".form-switch",
   hacker: ".hacker-drag-zone",
@@ -90,19 +89,16 @@ export default function App() {
       <FormSwitchButtons />
       <HackerStreamZone />
 
-      {/* 四角 HUD 面板 */}
-      <Hud corner="tr" id="hud-tr">
-        <div><span className="k">UNIT</span> <span className="v">VX-72</span></div>
-        <div><span className="k">BANDS</span> <span className="v" id="hud-bands">72</span></div>
-        <div><span className="k">SIG</span> <span className="v mag" id="hud-sig">STREAM</span></div>
-        <ChatToggle />
-      </Hud>
+      {/* 角落 HUD 面板（原右上 hud-tr 已并入左下 hud-bl） */}
       <Hud corner="bl" id="hud-bl">
         <div><span className="k">SYS</span> <span className="v" id="hud-status">● LIVE</span></div>
         <div><span className="k">FPS</span> <span className="v" id="hud-fps">--</span></div>
         <div><span className="k">MODE</span> <span className="v mag">SIM</span></div>
         <div><span className="k">ENERGY</span> <span className="v" id="hud-energy">0%</span></div>
         <div><span className="k">PEAK</span> <span className="v" id="hud-peak">0%</span></div>
+        <div><span className="k">UNIT</span> <span className="v">VX-72</span></div>
+        <div><span className="k">BANDS</span> <span className="v" id="hud-bands">72</span></div>
+        <div><span className="k">SIG</span> <span className="v mag" id="hud-sig">STREAM</span></div>
         <ChatToggle />
         <McpToggle active={mcpOpen} onClick={() => setMcpOpen((v) => !v)} />
       </Hud>
@@ -114,7 +110,7 @@ export default function App() {
       {/* 主对话窗口 */}
       <ChatPanel />
 
-      {/* MCP 服务器列表浮层（点 tr HUD 的「MCP 服务器」入口开合） */}
+      {/* MCP 服务器列表浮层（点左下 HUD 的「MCP 服务器」入口开合） */}
       <McpPanel open={mcpOpen} onClose={() => setMcpOpen(false)} />
 
       {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}

@@ -13,7 +13,7 @@ export function TraceContext({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-context"
       title="对话流-02附加上下文"
-      defaultPos={{ x: 330, y: 280 }}
+      defaultPos={{ x: 330, y: 310 }}
       width={300}
       open={open}
       onClose={onClose}

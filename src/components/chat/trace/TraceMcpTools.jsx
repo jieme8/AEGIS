@@ -15,7 +15,7 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-mcp-tools"
       title="对话流-05工具调用"
-      defaultPos={{ x: 980, y: 460 }}
+      defaultPos={{ x: 640, y: 80 }}
       width={320}
       open={open}
       onClose={onClose}

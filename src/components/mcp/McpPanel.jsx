@@ -151,9 +151,13 @@ export function McpPanel({ open, onClose }) {
       <div className="mcp-body">
         {loading && <LoadingDots label="正在查询 MCP 状态…" />}
         {!loading && error && (
-          <div className="mcp-empty err">
-            无法连接 MCP Relay（/api/mcp/status）。<br />
-            请确认 <code>npm run mcp-relay</code> 已启动。
+          <div className="mcp-empty err mcp-hint">
+            <div className="mcp-warn-title">⚠ MCP 服务不可用</div>
+            <p>无法连接 MCP Relay（<code>/api/mcp/status</code> 请求失败）。</p>
+            <p>本项目的 MCP 工具依赖 Node 侧 Relay 进程——<b>只跑 <code>npm run dev</code>（仅 vite）是不会带起 Relay 的</b>，所以面板里的 MCP 全部不可用。</p>
+            <p>请用以下任一方式重启，再刷新本面板：</p>
+            <pre className="mcp-cmd">npm run dev:all   # 同时启动 vite + Relay（推荐）</pre>
+            <pre className="mcp-cmd">npm run mcp-relay  # 仅启动 Relay（vite 另开）</pre>
           </div>
         )}
         {!loading && !error && servers.length === 0 && (

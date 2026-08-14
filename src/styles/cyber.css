@@ -87,7 +87,6 @@
   .panel .v { color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,0.6); }
   .panel .v.mag { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,0.6); }
   .tl { top: 16px; left: 16px; }
-  .tr { top: 16px; right: 16px; text-align: right; }
   .bl { bottom: 18px; left: 16px; }
   .br { bottom: 18px; right: 16px; text-align: right; }
 
@@ -374,10 +373,14 @@
     padding: 2px 6px; pointer-events: none; white-space: nowrap;
     box-shadow: 0 0 8px rgba(177,75,255,0.55);
   }
-  /* 标签内分段：ID 与实时坐标左右对齐，坐标以竖线分隔并着色，便于快速读取 */
+  /* 标签内分段：ID / 坐标 / 尺寸，以竖线分隔并着色，便于快速读取 */
   .dev-label .dl-id { font-weight: 700; color: #fff; }
   .dev-label .dl-coord {
     font-weight: 400; color: var(--cyan); letter-spacing: 0; white-space: nowrap;
+    border-left: 1px solid rgba(255,255,255,0.35); padding-left: 7px;
+  }
+  .dev-label .dl-size {
+    font-weight: 400; color: var(--magenta); letter-spacing: 0; white-space: nowrap;
     border-left: 1px solid rgba(255,255,255,0.35); padding-left: 7px;
   }
   body:not(.dev-mode) .dev-label { display: none; }   /* 默认隐藏，开启 dev-mode 才显示 */
@@ -471,7 +474,8 @@
   .dev-label:hover { filter: brightness(1.35); }
   .dev-label.copied { background: #00f0ff !important; color: #04060c !important; }
   .dev-label.copied .dl-id,
-  .dev-label.copied .dl-coord { color: #04060c !important; border-color: transparent !important; }
+  .dev-label.copied .dl-coord,
+  .dev-label.copied .dl-size { color: #04060c !important; border-color: transparent !important; }
 
   /* 中央环形波形热区：编辑模式下可悬停选中（画布上的特效无法单独 DOM 悬停，用热区弥补） */
   .dev-zone { position: fixed; pointer-events: none; }
@@ -500,7 +504,7 @@
 
   /* 组件清单（编辑模式，可折叠）：列出全部组件含背景特效，逐行可复制 */
   .dev-legend {
-    position: fixed; left: 16px; bottom: 60px; z-index: 33;
+    position: fixed; left: 140px; top: 444px; bottom: auto; z-index: 33;
     width: 240px; pointer-events: auto; display: none;
     font-family: var(--mono); font-size: 11px; letter-spacing: .5px;
     background: rgba(4,6,12,0.94); border: 1px solid rgba(0,240,255,0.45);
@@ -527,8 +531,36 @@
   .dev-legend-row:hover { background: rgba(0,240,255,0.10); }
   .dev-legend-row .rid { color: var(--cyan); }
   .dev-legend-row .rnm { color: var(--dim); text-align: right; }
-  .dev-legend::-webkit-scrollbar { width: 6px; }
-  .dev-legend::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  /* 滚动条样式：作用于真正滚动的 body 容器（面板自身 overflow:hidden，原选择器写错失效）*/
+  .dev-legend-body {
+    scrollbar-width: thin;                                              /* Firefox */
+    scrollbar-color: rgba(0, 240, 255, 0.45) transparent;
+  }
+  .dev-legend-body::-webkit-scrollbar { width: 6px; height: 6px; }
+  .dev-legend-body::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 4px 0;                                                      /* 上下留白，thumb 不贴边 */
+  }
+  .dev-legend-body::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg,
+      rgba(0, 240, 255, 0.60) 0%,
+      rgba(0, 240, 255, 0.28) 100%);
+    border-radius: 6px;
+    border: 1px solid rgba(0, 240, 255, 0.30);
+    box-shadow: 0 0 6px rgba(0, 240, 255, 0.22), inset 0 0 2px rgba(0, 240, 255, 0.35);
+    transition: background 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .dev-legend-body::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg,
+      rgba(0, 240, 255, 0.90) 0%,
+      rgba(0, 240, 255, 0.55) 100%);
+    border-color: rgba(0, 240, 255, 0.55);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.50), inset 0 0 3px rgba(0, 240, 255, 0.5);
+  }
+  .dev-legend-body::-webkit-scrollbar-thumb:active {
+    background: rgba(0, 240, 255, 0.95);
+  }
+  .dev-legend-body::-webkit-scrollbar-corner { background: transparent; }
 
   /* ===================== 模型对话过程 · 内容样式（被 6 个独立浮层共用） ===================== */
   /* 外层浮层容器样式见「通用独立浮层 (FloatingPanel)」一节；
@@ -764,8 +796,26 @@
   .mcp-empty {
     font-size: 11px; line-height: 1.6; color: var(--dim); font-style: italic; text-align: center; padding: 10px 4px;
   }
-  .mcp-empty.err { color: #ff8a98; font-style: normal; }
+  .mcp-empty.err { color: #ff8a98; font-style: normal; text-align: left; }
   .mcp-empty code { color: var(--cyan); background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
+  .mcp-hint {
+    border: 1px solid rgba(255,138,152,0.45);
+    background: rgba(255,80,100,0.08);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .mcp-hint p { margin: 6px 0; font-size: 11px; line-height: 1.55; }
+  .mcp-hint b { color: #ffb0bb; }
+  .mcp-warn-title {
+    font-size: 12px; font-weight: 700; color: #ff8a98; letter-spacing: 0.5px;
+    margin-bottom: 4px; text-shadow: 0 0 8px rgba(255,80,100,0.4);
+  }
+  .mcp-cmd {
+    margin: 5px 0; padding: 6px 9px; font-size: 11px; line-height: 1.4;
+    color: var(--cyan); background: rgba(0,0,0,0.45);
+    border-left: 2px solid var(--cyan); border-radius: 4px;
+    white-space: pre-wrap; word-break: break-all; font-family: var(--mono, monospace);
+  }
 
   /* ===== 油价行情卡片停靠位（主页集成） ===== */
   .oil-dock {
@@ -782,14 +832,13 @@
      ---------------------------------------------------------
      入场顺序 / 延迟 / 时长 / 缓动（与 SEQUENCE 对齐）：
        01 title        +120ms  700ms  cubic-bezier(.16,1,.3,1)
-       02 hud-tr       +260ms  600ms  cubic-bezier(.2,.9,.25,1)
-       03 stage        +360ms  750ms  cubic-bezier(.2,.8,.2,1)
-       04 form-switch  +520ms  550ms  cubic-bezier(.2,.9,.25,1)
-       05 hacker       +640ms  600ms  cubic-bezier(.2,.9,.25,1)
-       06 hud-bl       +760ms  600ms  cubic-bezier(.2,.9,.25,1)
-       07 hud-br       +820ms  600ms  cubic-bezier(.2,.9,.25,1)
-       08 oil          +940ms  600ms  cubic-bezier(.2,.9,.25,1)
-       09 chat        +1080ms  650ms  cubic-bezier(.16,1,.3,1)
+       02 stage        +360ms  750ms  cubic-bezier(.2,.8,.2,1)
+       03 form-switch  +520ms  550ms  cubic-bezier(.2,.9,.25,1)
+       04 hacker       +640ms  600ms  cubic-bezier(.2,.9,.25,1)
+       05 hud-bl       +760ms  600ms  cubic-bezier(.2,.9,.25,1)
+       06 hud-br       +820ms  600ms  cubic-bezier(.2,.9,.25,1)
+       07 oil          +940ms  600ms  cubic-bezier(.2,.9,.25,1)
+       08 chat        +1080ms  650ms  cubic-bezier(.16,1,.3,1)
      机制：body 未 .booted 时核心 UI 隐藏并错位；
            App 在 BOOT 结束后给 body 加 .booted，组件统一触发，
            各元素用 --delay/--dur/--ease 实现错落（由 App 按 SEQUENCE 注入）。
@@ -829,7 +878,6 @@
   body:not(.booted) .title-wrap       { transform: translateY(-26px); }
   body:not(.booted) .hacker-drag-zone { transform: translateX(-40px); }
   body:not(.booted) .oil-dock         { transform: translateY(40px); }
-  body:not(.booted) .hud.tr           { transform: translateY(-26px); }
   body:not(.booted) .hud.bl,
   body:not(.booted) .hud.br           { transform: translateY(26px); }
 

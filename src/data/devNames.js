@@ -3,8 +3,7 @@ export const DEV_NAMES = {
   "fx-scanbar": "移动扫描光带",
   "fx-spectrum": "频谱可视化画布",
   "fx-title": "顶部故障标题",
-  "hud-tr": "右上 HUD · 单位/频段",
-  "hud-bl": "左下 HUD · 能量/峰值",
+  "hud-bl": "左下 HUD · 能量/峰值/单位/频段",
   "hud-br": "右下 HUD · 频率/增益",
   "fx-hacker-stream": "左侧黑客数据流",
   "chat-panel": "主对话窗口",
@@ -30,7 +29,7 @@ export const DEV_NAMES = {
 // 清单分组（顺序即展示顺序）
 export const DEV_GROUPS = [
   { title: "主组件 / 交互", ids: ["fx-spectrum", "fx-bars", "fx-title", "fx-scanbar", "fx-hacker-stream", "chat-panel", "fx-form-switch"] },
-  { title: "HUD 面板", ids: ["hud-tr", "hud-bl", "hud-br"] },
+  { title: "HUD 面板", ids: ["hud-bl", "hud-br"] },
   { title: "背景特效（不可移动）", ids: ["fx-ring", "fx-grid", "fx-data-rain", "fx-scanlines", "fx-vignette", "fx-glitch"] },
   { title: "数据面板 / 浮层", ids: ["oil-price-panel", "mcp-panel", "mcp-toggle", "dev-legend"] },
   { title: "模型对话过程（独立浮层）", ids: ["trace-request-status", "trace-context", "trace-prompt", "trace-reasoning", "trace-mcp-tools"] },

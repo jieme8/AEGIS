@@ -66,8 +66,12 @@ export function useDevOverlay() {
       const coordEl = document.createElement("span");
       coordEl.className = "dl-coord";
       coordEl.textContent = "";
+      const sizeEl = document.createElement("span");
+      sizeEl.className = "dl-size";
+      sizeEl.textContent = "";
       tag.appendChild(idEl);
       tag.appendChild(coordEl);
+      tag.appendChild(sizeEl);
       el.appendChild(tag);
       // 动态补标的标签也要能点击复制
       tag.addEventListener("click", (e) => {
@@ -95,23 +99,20 @@ export function useDevOverlay() {
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
-    // 编辑模式下，为【所有】带标签的组件实时显示坐标（X/Y；可缩放的对话窗口附带 W×H）
-    const SHOW_SIZE_IDS = ["chat-panel"];
+    // 编辑模式下，为【所有】带标签的组件实时显示坐标（X/Y）与尺寸（W×H）
     let coordTimer = null;
     function updateCoordLabels() {
       document.querySelectorAll(".dev-label").forEach((tag) => {
         const coordEl = tag.querySelector(".dl-coord");
-        if (!coordEl) return;
+        const sizeEl = tag.querySelector(".dl-size");
+        if (!coordEl || !sizeEl) return;
         const host = tag.parentElement;
         if (!host) return;
         const r = host.getBoundingClientRect();
         const x = Math.round(r.left);
         const y = Math.round(r.top);
-        let coord = `X:${x} Y:${y}`;
-        if (SHOW_SIZE_IDS.indexOf(tag.dataset.copyId) !== -1) {
-          coord += `  ${Math.round(r.width)}×${Math.round(r.height)}`;
-        }
-        coordEl.textContent = coord;
+        coordEl.textContent = `X:${x} Y:${y}`;
+        sizeEl.textContent = `${Math.round(r.width)}×${Math.round(r.height)}`;
       });
     }
     function startCoordTimer() {
@@ -121,8 +122,9 @@ export function useDevOverlay() {
     }
     function stopCoordTimer() {
       if (coordTimer) { clearInterval(coordTimer); coordTimer = null; }
-      // 关闭编辑模式时清空坐标，避免残留
+      // 关闭编辑模式时清空坐标与尺寸，避免残留
       document.querySelectorAll(".dev-label .dl-coord").forEach((c) => { c.textContent = ""; });
+      document.querySelectorAll(".dev-label .dl-size").forEach((s) => { s.textContent = ""; });
     }
 
     // 悬停 / 选中：亮色描边 + 底部读数告知当前项

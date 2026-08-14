@@ -14,7 +14,6 @@ export const BOOT_MS = 2400;
 //   el   : 对应 DOM 的 data-seq 值
 export const SEQUENCE = [
   { el: "title",      at: 120,  dur: 700, ease: "cubic-bezier(.16,1,.3,1)"  },
-  { el: "hud-tr",     at: 260,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "stage",      at: 360,  dur: 750, ease: "cubic-bezier(.2,.8,.2,1)"  },
   { el: "form-switch",at: 520,  dur: 550, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "hacker",     at: 640,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },

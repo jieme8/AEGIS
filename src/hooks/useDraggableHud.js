@@ -1,12 +1,11 @@
 import { useEffect } from "react";
 import { isDevMode, onDevModeChange } from "../lib/devMode.js";
 
-// 编辑态（dev-mode）可拖拽的元素：形态切换按钮组 + 三个角落 HUD。
+// 编辑态（dev-mode）可拖拽的元素：形态切换按钮组 + 两个角落 HUD。
 // 仅在显示组件ID时允许移动；松手后位置写入 localStorage，刷新后保持。
 // 拖拽时把元素从 CSS 角/居中定位转换为 left/top 坐标定位，避免与 transform 冲突。
 const MOVABLE = [
   { sel: ".form-switch", key: "fx-form-switch" },
-  { sel: ".hud.tr", key: "hud-tr" },
   { sel: ".hud.bl", key: "hud-bl" },
   { sel: ".hud.br", key: "hud-br" },
 ];

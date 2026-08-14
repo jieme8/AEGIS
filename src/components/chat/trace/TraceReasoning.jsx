@@ -15,7 +15,7 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-reasoning"
       title="对话流-04思考过程"
-      defaultPos={{ x: 640, y: 80 }}
+      defaultPos={{ x: 970, y: 80 }}
       width={320}
       open={open}
       onClose={onClose}
