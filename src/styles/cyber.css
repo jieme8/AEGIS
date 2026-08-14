@@ -406,22 +406,6 @@
   .dev-readout b { color: #fff; text-shadow: 0 0 8px rgba(0,240,255,0.6); }
   body.dev-mode .dev-readout { display: block; }        /* 仅在 dev 模式下可见 */
 
-  .dev-toggle {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    z-index: 31; pointer-events: auto; cursor: pointer;
-    font-family: var(--mono); font-size: 11px; letter-spacing: 1px;
-    color: var(--cyan); background: rgba(6,10,18,0.8);
-    border: 1px solid rgba(0,240,255,0.4); border-radius: 6px;
-    padding: 6px 12px; box-shadow: 0 0 16px rgba(0,240,255,0.15);
-    backdrop-filter: blur(3px); transition: color .15s, border-color .15s;
-  }
-  .dev-toggle:hover { color: var(--magenta); border-color: var(--magenta); }
-  .dev-toggle.active { color: var(--magenta); border-color: rgba(255,43,214,0.6); box-shadow: 0 0 16px rgba(255,43,214,0.2); }
-
-  @media (max-width: 640px), (hover: none) and (pointer: coarse) {
-    .dev-toggle { font-size: 10px; padding: 5px 10px; }
-  }
-
   /* 编辑模式下：让不可移动的 HUD / 标题也能被鼠标悬停选中（默认 pointer-events:none 会穿透到画布） */
   body.dev-mode .hud,
   body.dev-mode .title-wrap { pointer-events: auto; }
@@ -459,6 +443,59 @@
     border-color: var(--cyan);
     box-shadow: 0 0 14px rgba(0,240,255,0.6);
   }
+
+  /* ===== 底部任务栏（一个按钮 = 一个功能 / 组件入口） ===== */
+  .task-bar {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 9;
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px;
+    border-radius: 8px;
+  }
+  .task-bar .tb-label {
+    font-size: 10px; letter-spacing: 3px; color: var(--dim);
+    padding-right: 8px; margin-right: 2px;
+    border-right: 1px solid rgba(0,240,255,0.2);
+  }
+  /* 隐藏的开关触发器（对话 / MCP）：仅供底部任务栏点击，自身不显示 */
+  .hud-triggers { display: none; }
+
+  /* 任务栏「频谱 / 油价」点击时的高亮脉冲（目标为 fixed 元素，用闪烁代替滚动定位） */
+  .tb-flash {
+    animation: tbFlash .9s ease;
+    border-radius: 4px;
+  }
+  @keyframes tbFlash {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(0,240,255,0); }
+    20%      { box-shadow: 0 0 0 3px rgba(0,240,255,0.85), 0 0 22px rgba(0,240,255,0.5); }
+    60%      { box-shadow: 0 0 0 2px rgba(255,43,214,0.7), 0 0 18px rgba(255,43,214,0.4); }
+  }
+  .task-bar .tb-items { display: flex; align-items: center; gap: 8px; }
+  .tb-btn {
+    position: relative;
+    display: flex; align-items: center; gap: 6px;
+    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
+    color: var(--cyan);
+    background: rgba(0,240,255,0.06);
+    border: 1px solid rgba(0,240,255,0.20);
+    border-radius: 6px;
+    padding: 7px 12px 7px 10px;
+    cursor: pointer;
+    transition: all .18s;
+  }
+  .tb-btn:hover { background: rgba(0,240,255,0.16); border-color: rgba(0,240,255,0.5); color: #eafdff; }
+  .tb-btn.active {
+    color: #04060c; font-weight: 700;
+    background: var(--cyan); border-color: var(--cyan);
+    box-shadow: 0 0 14px rgba(0,240,255,0.6);
+  }
+  .tb-btn .tb-icon { font-size: 14px; line-height: 1; }
+  .tb-btn .tb-idx {
+    font-size: 9px; color: var(--dim); opacity: .7;
+    margin-left: 2px; letter-spacing: 0;
+  }
+  .tb-btn.active .tb-idx { color: rgba(4,6,12,0.6); }
+
   /* 形态切换按钮仅在编辑模式下可见 */
   .form-switch { display: none; }
   body.dev-mode .form-switch { display: flex; }
@@ -836,7 +873,7 @@
        03 form-switch  +520ms  550ms  cubic-bezier(.2,.9,.25,1)
        04 hacker       +640ms  600ms  cubic-bezier(.2,.9,.25,1)
        05 hud-bl       +760ms  600ms  cubic-bezier(.2,.9,.25,1)
-       06 hud-br       +820ms  600ms  cubic-bezier(.2,.9,.25,1)
+       06 task-bar     +900ms  600ms  cubic-bezier(.2,.9,.25,1)
        07 oil          +940ms  600ms  cubic-bezier(.2,.9,.25,1)
        08 chat        +1080ms  650ms  cubic-bezier(.16,1,.3,1)
      机制：body 未 .booted 时核心 UI 隐藏并错位；
@@ -853,7 +890,7 @@
   }
   /* B. 仅淡入的元素（保留自身 transform 居中 / 开合动画）：opacity + visibility，
          transform 维持 .28s 以保障 chat 开合位移 */
-  #stage, .form-switch, .dev-toggle {
+  #stage, .form-switch, .task-bar {
     transition:
       opacity    var(--dur, .6s) var(--ease, ease) var(--delay, 0ms),
       visibility var(--dur, .3s) var(--delay, 0ms),
@@ -869,10 +906,9 @@
   body:not(.booted) .hacker-drag-zone,
   body:not(.booted) .oil-dock,
   body:not(.booted) .chat-panel,
-  body:not(.booted) .dev-toggle { opacity: 0; }
+  body:not(.booted) .task-bar { opacity: 0; }
 
   body:not(.booted) .chat-panel { visibility: hidden; }   /* 与自身开合动画一致 */
-  body:not(.booted) .dev-toggle { pointer-events: none; }
 
   /* 错位偏置（仅作用于 A 组可安全位移的元素） */
   body:not(.booted) .title-wrap       { transform: translateY(-26px); }
@@ -888,8 +924,7 @@
   body.booted .form-switch,
   body.booted .hacker-drag-zone,
   body.booted .oil-dock,
-  body.booted .dev-toggle { opacity: 1; }
-  body.booted .dev-toggle { --delay: 1300ms; }   /* 调试开关最后淡入 */
+  body.booted .task-bar { opacity: 1; }
 
   /* C. 背景层（网格/光晕/暗角/扫描线/扫描条）：boot 结束后整体“上电”淡入，
        避免遮罩揭开瞬间背景猛然出现，营造从无到有的代入感 */

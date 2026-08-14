@@ -188,14 +188,10 @@ export function useDevOverlay() {
     }
     // 清单折叠已移除：header 现在用于拖拽，点击不再触发折叠（避免「一点就缩小」）
 
-    // 显隐开关
-    const toggle = document.getElementById("devToggle");
+    // 显隐开关（原「显示组件ID」按钮已并入底部任务栏「调试」入口，
+    // 这里暴露全局切换函数供任务栏调用）
     function setDevMode(on) {
       body.classList.toggle("dev-mode", on);
-      if (toggle) {
-        toggle.classList.toggle("active", on);
-        toggle.textContent = on ? "隐藏组件ID" : "显示组件ID";
-      }
       if (readout) {
         readout.textContent = on ? "悬停任意组件 → 查看 ID ｜ 点击 ID / 清单行 → 复制" : "";
       }
@@ -204,8 +200,6 @@ export function useDevOverlay() {
       // 广播模式切换，供拖拽等模块按 dev-mode 启用/停用
       window.dispatchEvent(new CustomEvent("devmodechange", { detail: { on } }));
     }
-    if (toggle) {
-      toggle.addEventListener("click", () => setDevMode(!body.classList.contains("dev-mode")));
-    }
+    window.toggleDevMode = () => setDevMode(!body.classList.contains("dev-mode"));
   }, []);
 }

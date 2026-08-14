@@ -11,6 +11,7 @@ import {
 import { SpectrumCanvas } from "./components/viz/SpectrumCanvas.jsx";
 import { TitleBar } from "./components/viz/TitleBar.jsx";
 import { FormSwitchButtons } from "./components/viz/FormSwitchButtons.jsx";
+import { TaskBar } from "./components/viz/TaskBar.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
 import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
 import { Hud, ChatToggle, McpToggle } from "./components/hud/Hud.jsx";
@@ -28,7 +29,7 @@ const SEQ_SELECTOR = {
   "form-switch": ".form-switch",
   hacker: ".hacker-drag-zone",
   "hud-bl": ".hud.bl",
-  "hud-br": ".hud.br",
+  "task-bar": ".task-bar",
   oil: ".oil-dock",
   chat: ".chat-panel",
 };
@@ -45,6 +46,7 @@ export default function App() {
   const [booted, setBooted] = useState(false);
   const [bootGone, setBootGone] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(true);
+  const [activeTask, setActiveTask] = useState(null);
 
   useEffect(() => {
     // 注入各组件入场时序变量（--delay/--dur/--ease），由 CSS 消费
@@ -99,13 +101,16 @@ export default function App() {
         <div><span className="k">UNIT</span> <span className="v">VX-72</span></div>
         <div><span className="k">BANDS</span> <span className="v" id="hud-bands">72</span></div>
         <div><span className="k">SIG</span> <span className="v mag" id="hud-sig">STREAM</span></div>
-        <ChatToggle />
-        <McpToggle active={mcpOpen} onClick={() => setMcpOpen((v) => !v)} />
-      </Hud>
-      <Hud corner="br" id="hud-br">
         <div><span className="k">FREQ</span> <span className="v" id="hud-freq">20–20k</span></div>
         <div><span className="k">GAIN</span> <span className="v mag">+0.0dB</span></div>
       </Hud>
+
+      {/* 对话 / MCP 的开关触发器（原 HUD 上的可见按钮已移除，
+          改由底部任务栏承载；这里仅保留隐藏 DOM 钩子供任务栏点击） */}
+      <div className="hud-triggers" aria-hidden="true">
+        <ChatToggle />
+        <McpToggle active={mcpOpen} onClick={() => setMcpOpen((v) => !v)} />
+      </div>
 
       {/* 主对话窗口 */}
       <ChatPanel />
@@ -122,6 +127,9 @@ export default function App() {
           forecast={{ direction: "down", text: "预计小幅下调" }}
         />
       </div>
+
+      {/* 底部任务栏：一个按钮 = 一个功能 / 组件入口 */}
+      <TaskBar active={activeTask} onActivate={setActiveTask} />
 
       {/* 调试覆盖层（组件 ID 标注 / 清单 / 复制） */}
       <DevOverlay />

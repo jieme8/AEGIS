@@ -72,9 +72,6 @@ export function DevOverlay() {
   useDevOverlay();
   return (
     <>
-      <button className="dev-toggle" id="devToggle" type="button" title="显示 / 隐藏页面组件的参考 ID">
-        显示组件ID
-      </button>
       <div className="dev-readout" id="devReadout" />
       <div className="dev-toast" id="devToast" />
       <DevLegend />

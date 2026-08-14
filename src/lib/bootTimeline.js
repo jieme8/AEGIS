@@ -18,7 +18,7 @@ export const SEQUENCE = [
   { el: "form-switch",at: 520,  dur: 550, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "hacker",     at: 640,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "hud-bl",     at: 760,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
-  { el: "hud-br",     at: 820,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
+  { el: "task-bar",   at: 900,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "oil",        at: 940,  dur: 600, ease: "cubic-bezier(.2,.9,.25,1)" },
   { el: "chat",       at: 1080, dur: 650, ease: "cubic-bezier(.16,1,.3,1)"  },
 ];
