@@ -1,16 +1,24 @@
 import { useChatController } from "../../hooks/useChatController.js";
-import { ChatTraceDrawer } from "./ChatTraceDrawer.jsx";
+import { TracePanels } from "./TracePanels.jsx";
 
 // 主对话窗口：页面核心交互区（默认开启），承载拖拽 / 缩放 / 对话逻辑。
 // 子组件（头部 / 消息区 / 输入区 / 缩放手柄）拆分以便复用，行为逻辑统一由 useChatController 驱动。
 
 const RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 
-export function ChatHeader() {
+export function ChatHeader({ traceOpen, onToggleTrace }) {
   return (
     <div className="chat-header" id="chatDragHandle">
       <span className="led" />
       <span className="title">AI ASSISTANT</span>
+      <button
+        className={"chat-trace" + (traceOpen ? " active" : "")}
+        id="toggleTrace"
+        type="button"
+        aria-label="显示/隐藏对话流"
+        aria-pressed={traceOpen ? "true" : "false"}
+        onClick={onToggleTrace}
+      >对话流</button>
       <button className="chat-clear" id="clearChat" type="button" aria-label="清空对话上下文" disabled>清空</button>
       <button className="chat-close" id="closeChat" type="button" aria-label="关闭">×</button>
     </div>
@@ -48,17 +56,22 @@ export function ResizeHandles() {
 }
 
 export function ChatPanel() {
-  const { trace, traceOpen, closeTrace } = useChatController();
+  const { trace, traceOpen, closeTrace, toggleTrace, panelOpen } = useChatController();
   return (
     <>
-      <aside className="chat-panel open" id="chatPanel" data-dev-id="chat-panel" aria-hidden="false">
-        <ChatHeader />
+      <aside
+        className={"chat-panel" + (panelOpen ? " open" : "")}
+        id="chatPanel"
+        data-dev-id="chat-panel"
+        aria-hidden={panelOpen ? "false" : "true"}
+      >
+        <ChatHeader traceOpen={traceOpen} onToggleTrace={toggleTrace} />
         <ChatMessages />
         <ChatComposer />
         <ResizeHandles />
       </aside>
       {/* 独立浮层：经 Portal 挂到 body，不受聊天面板（含 backdrop-filter）限制，可在整页任意拖动 */}
-      <ChatTraceDrawer trace={trace} open={traceOpen} onClose={closeTrace} />
+      <TracePanels trace={trace} open={traceOpen} onClose={closeTrace} />
     </>
   );
 }

@@ -1,7 +1,7 @@
 # MCP 集成计划文档 · J.A.R.V.I.S. Cyber Audio Spectrum
 
-> 版本：v2 · 2026-08-14
-> 状态：**规划阶段（未改动任何代码）**
+> 版本：v2 · 2026-08-14（2026-08-14 修订：同步实际落地偏差）
+> 状态：**Phase 1.1 已实施（fetch + Tavily 搜索接入，构建+测试通过，Relay 实测可抓网页；`memory` 尚未启用）**
 > 目标：把当前「纯文本聊天助手」升级为「可调用外部工具的 Agent」，通过 Model Context Protocol 接入工具服务器。
 
 ---
@@ -12,9 +12,14 @@
 |---|------|------|
 | D1 | **LongCat-2.0 支持 OpenAI 兼容 `tool_calls`** | 原方案的硬阻塞已解除，**无需更换模型**，按原 `MODEL_CONFIG` 继续。 |
 | D2 | **第一期只装 `fetch` + `memory`**，`filesystem` 暂不接入 | 工具服务器**逐个安装、逐个验证**（先 `fetch`，后 `memory`）。 |
-| D3 | **MCP 仅接入 React 工程** | 独立 `audio-visualizer.html` 顶部加标注「此 Demo 不含 MCP 工具」，避免双平行实现维护漂移。 |
+| D3 | **MCP 仅接入 React 工程（单实现）** | 独立 `audio-visualizer.html` 已于重构后期删除，功能仅保留在 React 工程，避免双平行实现维护漂移。 |
 | D4 | **编排放浏览器侧** | 沿用现有「浏览器直连 LLM 流式」范式，Relay 只做 MCP client + HTTP 代理，不在服务端持有整段对话。 |
 | D5 | 第二期再上 `filesystem` + 自研 `spectrum-bridge` + 管理面板 | 见第 6 节。 |
+
+> **实施偏差（已落地，2026-08-14 补记）**
+> - **Tavily 搜索 MCP 已先行接入**：原计划第一期仅 `fetch` + `memory`，但实际先装的是 `tavily-mcp`（`mcp.config.json` 中 `search` 已 `enabled`，Relay `/status` 可见，暴露 5 个 tavily 工具）。`fetch` 也已接入。→ 当前可用工具服务器为 `fetch` + `search`。
+> - **`memory` 尚未启用**：`mcp.config.json` 中 `memory.enabled` 仍为 `false`，Phase 1.2 待执行（官方 `@modelcontextprotocol/server-memory` 已确认可用）。
+> - **独立 `audio-visualizer.html` 已删除**：重构后期移除该单文件 Demo，功能统一保留在 Vite + React 工程（见 D3），不再存在"双平行实现"。
 
 ---
 
@@ -25,7 +30,7 @@
 **对接目标（第一期）**
 - 经 MCP 接入 `fetch`（联网/公开 API）与 `memory`（跨会话记忆）两个官方 stdio 服务器。
 - 浏览器侧实现 tool-loop 编排：检测 `tool_calls` → 调工具 → 回填 → 再请求（含迭代上限与错误兜底）。
-- trace 抽屉新增「工具调用」段，可视化每一次工具调用的服务器/工具/入参/返回。
+- trace 浮层新增「工具调用」段，可视化每一次工具调用的服务器/工具/入参/返回。
 - 调工具期间 `CyberFx.thinking()`，最终回答 `CyberFx.output()`，频谱随 Agent 状态形变。
 
 **非目标**：浏览器内 spawn stdio MCP（不可能）；模型协议层改造；业务数据库/自定义 API（留第二期）。
@@ -40,7 +45,7 @@
   - prod：`sendAuthFromBrowser=true` 浏览器直连（密钥暴露，已有注释提示自建后端代理）。
 - **首要缺口**：`src/lib/sse.js` 的 `parseSSEChunk` **只解析 `content` / `reasoning_content`，不解析 `tool_calls`**——必须扩展。
 - **全局契约**：`window.SpectrumEngine` / `window.CyberFx`（default/thinking/output）/ `window.SpectrumAPI.snapshot()`。
-- **双平行实现**：`audio-visualizer.html`（1735 行内联）与 React 工程镜像；行为变更须两处同步或明确仅一侧支持。
+- **单实现**：独立 `audio-visualizer.html` 已于重构后期删除，仅保留 Vite + React 工程；行为变更只需在一处进行。
 - **测试**：`scripts/verify-engine.cjs`、`tests/sse.test.mjs`、`scripts/clscheck.mjs`，均为 Node-only（无 Playwright）。
 
 ---
@@ -99,13 +104,13 @@
 | `src/lib/sse.js` | **核心缺口**：扩展 `parseSSEChunk` 累积 `delta.tool_calls[]`（按 `index` 重组 `id/type/function.name/function.arguments` 流式 JSON 碎片），输出 `toolCalls` | P1 |
 | `src/lib/mcpClient.js`（新建） | 浏览器侧门面：`listTools()`→`GET /api/mcp/list`；`callTool(name,args)`→`POST /api/mcp/call`；超时 + 错误归一化 | P1 |
 | `src/hooks/useChatController.js` | 请求体带 `tools`（会话前置拉取缓存）；`handleSend` 实现 tool-loop（含 ≤5 次迭代、错误兜底、与 `CyberFx` 形态联动）；断连标 `mcp-unavailable` | P1 |
-| `src/components/chat/ChatTraceDrawer.jsx` | 5 段流水线新增「06 工具调用」段：服务器/工具/入参/返回（可折叠、可复制） | P1 |
+| `src/components/chat/trace/TraceMcpTools.jsx` 等 5 个独立浮层 | trace 拆分为 5 个独立浮层（请求状态 / 附加上下文 / 提示词 / 思考过程 / **05 工具调用**），其中 `TraceMcpTools` 展示「工具调用」段：服务器/工具/入参/返回（可折叠、可复制） | P1 |
 | `vite.config.js` | 新增代理 `/api/mcp` → `http://localhost:8787` | P1 |
 | `server/mcp-relay.mjs`（新建） | Node 服务：官方 SDK 连接 `mcp.config.json` 服务器；`GET /api/mcp/list`、`POST /api/mcp/call`（按工具名路由） | P1 |
 | `package.json` | 加 `@modelcontextprotocol/sdk`；新增 `mcp-relay`、`dev:all`（并行 vite + relay）脚本 | P1 |
 | `tests/mcp.test.mjs`（新建） | mock relay 测 tool-loop 与 `mcpClient` | P1 |
 | `tests/sse.test.mjs` | 扩展覆盖 `tool_calls` 流式重组 | P1 |
-| `audio-visualizer.html` | 顶部加「此 Demo 不含 MCP 工具」标注（D3） | P1 |
+| `audio-visualizer.html` | **已删除**（重构后期移除独立 HTML，功能并入 React 工程，见 D3） | — |
 | `server/mcp-relay.mjs`（扩展） | 接入 `filesystem`（限定目录）；新增自研 `spectrum-bridge`（浏览器上报 `SpectrumAPI.snapshot()`，桥以 MCP resource 暴露） | P2 |
 | HUD / dev 面板 | `MODE` 连接成功后 `SIM→MCP`；可选 MCP 服务器管理面板 | P2 |
 
@@ -157,9 +162,9 @@
 3. 浏览器门面 + 单测：新建 `src/lib/mcpClient.js`、`tests/mcp.test.mjs`（mock relay）。
 4. SSE 改造：扩展 `parseSSEChunk` 支持 `tool_calls` 流式重组；`sse.test.mjs` 覆盖。
 5. 编排接入：`useChatController` 实现 tool-loop；`modelConfig` 加开关。
-6. 可观测：`ChatTraceDrawer` 加「工具调用」段；`CyberFx` 形态联动。
+6. 可观测：trace 浮层（`TraceMcpTools`）加「工具调用」段；`CyberFx` 形态联动。
 7. **验证 checkpoint**：`npm run build` + `npm test`；手动起 relay，发一条需联网的提问（如「查一下今天的新闻头条」），确认工具被调用、结果回填、trace 显示、频谱进入 thinking→output。
-8. 标注：`audio-visualizer.html` 顶部加「不含 MCP」。
+8. ~~标注：`audio-visualizer.html` 顶部加「不含 MCP」~~（该独立 HTML 已删除，无需此步，见 D3）。
 
 ### Phase 1.2 — 接入 `memory`
 1. 配置：`mcp.config.json` 中 `memory.enabled=true`。
@@ -192,9 +197,9 @@
 ## 8. 风险与验证
 
 - **安全**：Relay 可 spawn 任意命令，**必须**限定 `mcp.config.json` 来源与权限，禁止前端传入 server 定义；`fetch` 加出网白名单；`memory`/`filesystem` 锁定落盘目录。
-- **验证局限**：本环境无浏览器二进制（无 Playwright），交互级（动画/拖拽/真实工具调用）靠预览面板人工验证；逻辑层靠 Node 单测（`sse` / `mcp`）覆盖。
+- **验证**：交互级（动画/拖拽/真实工具调用）可用 `playwright-core` + 本机 Chrome 真实复现验证；逻辑层靠 Node 单测（`sse` / `mcp`）覆盖。
 - **回退**：MCP 断连/超时不影响基础对话，自动回落「无工具对话」并在 trace 标 `mcp-unavailable`。
-- **双平行实现**：D3 已定「MCP 仅 React 工程」，独立 HTML 仅加标注，不再镜像整套 tool-loop。
+- **单实现（无双平行）**：D3 已定「MCP 仅 React 工程」，独立 `audio-visualizer.html` 已删除，不再存在镜像整套 tool-loop 的维护负担。
 
 ---
 
@@ -205,4 +210,4 @@
 3. 一条需要联网的提问能正确触发 `fetch` 工具、回填、流式回答，且 trace「工具调用」段完整。
 4. 一条记忆偏好指令在跨会话后被正确召回。
 5. 工具不可用时不崩，trace 标 `mcp-unavailable`，基础对话正常。
-6. 独立 `audio-visualizer.html` 顶部有「不含 MCP」标注。
+6. 独立 `audio-visualizer.html` 已删除，MCP 仅存在于 React 工程（见 D3）。

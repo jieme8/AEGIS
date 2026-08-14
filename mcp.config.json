@@ -1,0 +1,32 @@
+{
+  "relayPort": 8787,
+  "servers": [
+    {
+      "name": "fetch",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "node",
+      "args": ["server/mcp-fetch.mjs"],
+      "toolCallTimeoutMs": 20000,
+      "_note": "官方 @modelcontextprotocol/server-fetch 在本 registry 不可用（404），改用项目自研 server/mcp-fetch.mjs（仅依赖已装 SDK，离线可跑）。如需换回官方版，把 command/args 改为 npx -y @modelcontextprotocol/server-fetch 即可。"
+    },
+    {
+      "name": "memory",
+      "enabled": false,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "toolCallTimeoutMs": 20000,
+      "_note": "Phase 1.2 启用；该官方包在本 registry 可用（2026.7.4）。"
+    },
+    {
+      "name": "search",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "tavily-mcp"],
+      "toolCallTimeoutMs": 20000,
+      "_note": "Tavily 网页搜索（社区，质量好，专为 LLM 检索优化）。需 TAVILY_API_KEY 写入项目根 .env；Relay 启动时会载入 .env 注入本子进程。无 key 时连接会报 error，填 key 重启即转 connected。"
+    }
+  ]
+}

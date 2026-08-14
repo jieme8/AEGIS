@@ -1,0 +1,222 @@
+/* =====================================================================
+ * typography-crisp.css — 字体清晰度专项优化（非破坏式）
+ * ---------------------------------------------------------------------
+ * 部署方式：在 src/main.jsx 末尾（cyber.css 之后）import 本文件即可。
+ * 移除方案：删掉这一行 import + 本文件，页面即恢复原始视觉，零残留。
+ *
+ * 诊断（基于本仓库 cyber.css / oil-price.css / useVizEngine.js 实测）：
+ *   ❶ 全局缺字体平滑控制（-webkit-font-smoothing / -moz-osx-font-smoothing）
+ *   ❷ 缺 text-rendering / font-feature-settings，字距与连字未优化
+ *   ❸ 10–13px 小字叠 8–14px text-shadow 辉光 → 边缘被“涂抹”显虚（头号元凶）
+ *   ❹ 面板 backdrop-filter: blur(3px) + 高透明底 → 文字对比度低、像浮在雾上
+ *   ❺ 入场动画 transform: scale(.965) → 0.3s 内文字瞬时发虚
+ *   ❻ clamp(vw) 可能落到亚像素字号 → 渲染发虚
+ *   ❼ canvas 文字（数字雨/黑客流）已做 DPR 缩放，但 y 未吸附设备像素网格
+ *
+ * 说明：本文件覆盖规则均带 !important，确保压过组件级 CSS（oil-price.css 等），
+ *       与 import 顺序无关。不涉及 boot 标题字号等独立选择器。
+ * ===================================================================== */
+
+/* ---------------------------------------------------------------
+ * 1) 全局抗锯齿 + 排版基线（html/body 为唯一选择器，天然生效）
+ *    -webkit-font-smoothing: antialiased → WebKit/Electron 关闭次像素渲染改灰度 AA，
+ *        细笔画不再被彩色描边糊住（macOS / 部分 Linux 提升最明显）。
+ *    -moz-osx-font-smoothing: grayscale → Firefox 等价项。
+ *    text-rendering: optimizeLegibility → 启用 kerning + 可选连字，小字号更利落。
+ *    font-synthesis: none → 禁止伪粗体/伪斜体合成，避免笔画变粗发糊。
+ *    text-size-adjust: 100% → 阻止移动端横竖屏切换时浏览器“智能”放大字号。
+ *
+ *    ★ Windows 版 Chrome 会忽略 -webkit-font-smoothing（走 DirectWrite），
+ *      此时清晰度主要靠后面“收敛辉光 + 提高对比 + 整数字号”三招。
+ * ------------------------------------------------------------- */
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body {
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ---------------------------------------------------------------
+ * 2) 收敛小字辉光（保赛博质感，但不再糊字）
+ *    把 10–13px 霓虹文字的 8–14px 辉光收到 4px 左右，扩散与透明度同步下调，
+ *    字芯更“实”，可读性显著提升；颜色语义（青/品红/涨红跌绿）完全保留。
+ * ------------------------------------------------------------- */
+.hud,
+.panel .v,
+.panel .v.mag,
+.chat-toggle,
+.mcp-toggle,
+.chat-header,
+.float-title,
+.mcp-title,
+.trace-kv .v,
+.mcp-name {
+  text-shadow: 0 0 4px rgba(0,240,255,0.35) !important;
+}
+.panel .v.mag,
+.chat-toggle.active,
+.mcp-toggle.active {
+  text-shadow: 0 0 4px rgba(255,43,214,0.35) !important;
+}
+.mcp-name { text-shadow: 0 0 4px rgba(0,240,255,0.25) !important; }
+
+/* 对话气泡正文（13px）：去除辉光，仅留颜色，长文阅读不再发雾 */
+.chat-msg .bubble { text-shadow: none !important; }
+
+/* 油价组件数字：8px → 4px（涨红跌绿语义色不变） */
+.oil-price,
+.oil-v { text-shadow: 0 0 4px rgba(0,240,255,0.40) !important; }
+
+/* 仅大标题保留较大辉光（字号大，辉光是装饰而非负担）：14px → 10px */
+.glitch { text-shadow: 0 0 10px rgba(0,240,255,0.45) !important; }
+
+/* ---------------------------------------------------------------
+ * 3) 面板对比：降模糊 + 提不透明，文字更“贴实”
+ *    原 .panel / .oil 为 rgba(...,0.55) + blur(3px)，过于通透；
+ *    调为 0.66–0.72 不透明 + blur(1.5–2px)，在保留毛玻璃质感的同时提高可读性。
+ * ------------------------------------------------------------- */
+.panel {
+  background: rgba(8,14,26,0.66) !important;
+  backdrop-filter: blur(2px) !important;
+  -webkit-backdrop-filter: blur(2px) !important;
+}
+.oil {
+  background: rgba(8,14,26,0.72) !important;
+  backdrop-filter: blur(1.5px) !important;
+  -webkit-backdrop-filter: blur(1.5px) !important;
+}
+
+/* ---------------------------------------------------------------
+ * 4) 入场动画不再“缩放”文字
+ *    同名 @keyframes 以文档末尾定义者生效；本文件 import 在 cyber.css 之后，
+ *    故 float-in 改为纯位移 + 透明度，消除 transform: scale(.965) 的瞬时发虚。
+ * ------------------------------------------------------------- */
+@keyframes float-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+/* 动画元素仅保留 backface-visibility；不长期挂 translateZ(0)，
+   避免 GPU 纹理在 fractional-pixel 定位时产生双线性插值发虚 */
+.float-panel,
+.hud,
+.title-wrap,
+.boot-core {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* ---------------------------------------------------------------
+ * 5) 亚像素字号收敛（高清屏 / 非整数缩放比例下更稳）
+ *    clamp() 含 vw 时可能结算为小数 px，部分引擎渲染发虚；
+ *    用 CSS round() 把结果吸附到整数像素（Chrome 111+ / 现代浏览器）。
+ *    注意：boot 大标题 .boot .glitch 单独设了字号，此处不覆盖，避免误伤。
+ * ------------------------------------------------------------- */
+.oil-price { font-size: clamp(20px, round(6.5vw, 1px), 25px) !important; }
+
+/* ---------------------------------------------------------------
+ * 5.5) 对话流浮层（.float-panel / trace-*）专项锐化
+ *    截图反馈显示这里仍是模糊重灾区：小字 10–10.5px + 8px 背景 blur + 辉光
+ *    + Windows 彩色小字易出 ClearType 次像素彩边。
+ *    策略：大幅降毛玻璃、提背景不透明、升字号、去斜体、压辉光。
+ * ------------------------------------------------------------- */
+.float-panel {
+  /* 背景从 0.94 提到 0.98 不透明；blur 从 8px 降到 3px；外发光减半 */
+  background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+  box-shadow: 0 0 18px rgba(0,240,255,0.12), inset 0 0 12px rgba(0,240,255,0.04) !important;
+}
+.mcp-panel {
+  background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)) !important;
+  backdrop-filter: blur(3px) !important;
+  -webkit-backdrop-filter: blur(3px) !important;
+  box-shadow: 0 0 18px rgba(0,240,255,0.12), inset 0 0 12px rgba(0,240,255,0.04) !important;
+}
+/* 浮层标题 12px：辉光再降到 2px，避免标题也糊 */
+.float-title,
+.mcp-title {
+  text-shadow: 0 0 2px rgba(0,240,255,0.35) !important;
+}
+
+/* trace 内部文字整体放大一号、去斜体、加一点点字重 */
+.trace-section { background: rgba(8,14,26,0.55) !important; }
+.trace-section > summary { font-size: 13px !important; }
+.sec-idx {
+  font-size: 10px !important;
+  box-shadow: 0 0 3px rgba(0,240,255,0.45) !important;
+}
+.trace-sub {
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  opacity: 1 !important;
+}
+.trace-code {
+  font-size: 12px !important;
+  line-height: 1.55 !important;
+}
+.trace-code.trace-empty { font-style: normal !important; }
+.trace-kv .k,
+.trace-kv .v { font-size: 12px !important; }
+.trace-hist-item { font-size: 12px !important; line-height: 1.5 !important; }
+.trace-role { font-size: 10px !important; }
+
+/* ---------------------------------------------------------------
+ * 6) 可选工具类（按需挂到元素）
+ *    .u-crisp   → 彻底关闭辉光，调试 / 强可读场景用
+ *    .u-no-blur → 关闭所在面板 backdrop blur，对比最大化
+ * ------------------------------------------------------------- */
+.u-crisp { text-shadow: none !important; }
+.u-no-blur {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ---------------------------------------------------------------
+ * 7) 字体文件选型（【已落地】自托管 JetBrains Mono）
+ *    现状：已通过 @fontsource/jetbrains-mono 自托管 400/500/700 三档，
+ *          在 main.jsx 用 `import "@fontsource/jetbrains-mono/XXX.css"` 注册，
+ *          全局 --mono 与 canvas FONT_STACK 均已把 "JetBrains Mono" 置于栈首。
+ *    收益：跨平台字形/字重一致、hinting 优，Windows 下锐度明显好于系统 Consolas；
+ *          离线可用（字体随 bundle 走，无外部请求）。
+ *    注意：JetBrains Mono 不含 CJK 字形，中文会自动回退到系统 CJK 字体（正常混排）。
+ *    下方 @font-face 示例保留，供「改用 /public/fonts 本地文件」或微调 size-adjust 时参考。
+ * ------------------------------------------------------------- */
+/*
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  size-adjust: 100%;
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  src: url("/fonts/JetBrainsMono-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+:root {
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code",
+          "Consolas", "Roboto Mono", Menlo, monospace;
+}
+*/
+
+/* ---------------------------------------------------------------
+ * 8) 响应式 / 高清屏（rem·vw·devicePixelRatio）策略说明
+ *    · 字号响应：现用 clamp(min, vw, max) 已是流式方案；唯一隐患是亚像素，
+ *      见第 5 条 round() 用法。无需整体迁 rem（本项目以 px 为基准更可控）。
+ *    · 画布高清：useVizEngine.js 已按 devicePixelRatio 放大 backing store
+ *      并 ctx.setTransform(dpr,...) 映射 CSS 像素——此机制正确；
+ *      本方案在 JS 侧再对文字 y 坐标做“设备像素网格吸附”，消除小数基线抖动
+ *      （见 src/hooks/useVizEngine.js 的 renderDpr + snap()）。
+ *    · 缩放比例：text-size-adjust:100% 已禁止浏览器对正文“智能”缩放，
+ *      保证 125%/150% 系统缩放下字号仍由我们的 clamp 决定、不糊。
+ * ------------------------------------------------------------- */

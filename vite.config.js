@@ -38,6 +38,16 @@ export default defineConfig(({ mode }) => {
             });
           },
         },
+        // —— MCP Relay 同源代理：浏览器只请求同源 /api/mcp，由 Vite 转发到
+        // Node 侧 MCP Relay（默认 8787），避免在浏览器暴露 MCP 服务器凭据。
+        // 注意：转发完整路径（不剥离 /api/mcp 前缀），因为 Relay 的路由本身就是
+        // /api/mcp/list | /call | /health | /status。若在此剥离前缀，Relay 会收到
+        // /list 等裸路径而返回 404（此前浏览器侧 MCP 全链路因此失效）。
+        "/api/mcp": {
+          target: "http://localhost:8787",
+          changeOrigin: true,
+          secure: true,
+        },
       },
     },
     build: {

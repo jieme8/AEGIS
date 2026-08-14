@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useVizEngine } from "./hooks/useVizEngine.js";
+import { useDraggableHud } from "./hooks/useDraggableHud.js";
 import {
   BackgroundGrid,
   BackgroundGlow,
@@ -12,8 +13,9 @@ import { TitleBar } from "./components/viz/TitleBar.jsx";
 import { FormSwitchButtons } from "./components/viz/FormSwitchButtons.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
 import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
-import { Hud, ChatToggle } from "./components/hud/Hud.jsx";
+import { Hud, ChatToggle, McpToggle } from "./components/hud/Hud.jsx";
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
+import { McpPanel } from "./components/mcp/McpPanel.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
@@ -36,10 +38,14 @@ export default function App() {
   // 启动可视化引擎（canvas 渲染 / 形态切换 / 黑客流拖拽），挂载于根组件，仅初始化一次。
   useVizEngine();
 
+  // 编辑态可拖拽：形态切换按钮组 + 三个角落 HUD（仅 dev-mode 生效）
+  useDraggableHud();
+
   // 启动序列状态：booted=进入主界面（body.booted 触发组件错落入场）；
   // bootGone=遮罩已退场可卸载。
   const [booted, setBooted] = useState(false);
   const [bootGone, setBootGone] = useState(false);
+  const [mcpOpen, setMcpOpen] = useState(true);
 
   useEffect(() => {
     // 注入各组件入场时序变量（--delay/--dur/--ease），由 CSS 消费
@@ -97,6 +103,8 @@ export default function App() {
         <div><span className="k">MODE</span> <span className="v mag">SIM</span></div>
         <div><span className="k">ENERGY</span> <span className="v" id="hud-energy">0%</span></div>
         <div><span className="k">PEAK</span> <span className="v" id="hud-peak">0%</span></div>
+        <ChatToggle />
+        <McpToggle active={mcpOpen} onClick={() => setMcpOpen((v) => !v)} />
       </Hud>
       <Hud corner="br" id="hud-br">
         <div><span className="k">FREQ</span> <span className="v" id="hud-freq">20–20k</span></div>
@@ -105,6 +113,9 @@ export default function App() {
 
       {/* 主对话窗口 */}
       <ChatPanel />
+
+      {/* MCP 服务器列表浮层（点 tr HUD 的「MCP 服务器」入口开合） */}
+      <McpPanel open={mcpOpen} onClose={() => setMcpOpen(false)} />
 
       {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}
       <div className="oil-dock">

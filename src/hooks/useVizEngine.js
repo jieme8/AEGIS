@@ -28,7 +28,7 @@ export function useVizEngine() {
       return;
     }
 
-    const FONT_STACK = 'ui-monospace, "SF Mono", "Cascadia Code", "Consolas", ' +
+    const FONT_STACK = '"JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", "Consolas", ' +
       '"Roboto Mono", Menlo, monospace';
 
     // ---------- 复用共享引擎（spectrum-engine.js） ----------
@@ -44,6 +44,8 @@ export function useVizEngine() {
     // 视口尺寸（CSS 像素），由 resizeCanvas 维护
     let viewWidth = 0;
     let viewHeight = 0;
+    // 当前生效的设备像素比（resizeCanvas 内更新），用于 canvas 文字“设备像素网格吸附”
+    let renderDpr = 1;
 
     // 时间戳（用于推算帧间隔 dt）
     let lastTimestamp = 0;
@@ -137,6 +139,9 @@ export function useVizEngine() {
       canvas.width = Math.floor(cssWidth * dpr);
       canvas.height = Math.floor(cssHeight * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // 以 CSS 像素为绘制单位
+      renderDpr = dpr;                         // 供文字基线吸附使用
+      // 启用 canvas 文字的 optimizeLegibility（字距/连字），提升小字号可读度
+      try { ctx.textRendering = "optimizeLegibility"; } catch (e) { /* 旧引擎忽略 */ }
 
       initDataRain();
       initHackerStream();          // 左侧黑客数据流初始化（依赖 viewWidth/Height）
@@ -162,6 +167,10 @@ export function useVizEngine() {
       }
     }
 
+    // 把坐标吸附到设备像素网格：canvas 文字基线落在小数像素上时，
+    // 字形会被双线性插值“抹虚”。乘 dpr 取整再除回，可让笔画对齐物理像素。
+    const snap = (v) => Math.round(v * renderDpr) / renderDpr;
+
     function drawDataRain(dt) {
       ctx.save();
       ctx.font = `10px ${FONT_STACK}`;
@@ -172,7 +181,7 @@ export function useVizEngine() {
         if (drop.y > viewHeight + 20) drop.y = -(drop.length * 12);
         let bits = "";
         for (let k = 0; k < drop.length; k++) bits += (Math.random() < 0.5 ? "0" : "1");
-        ctx.fillText(bits, drop.x, drop.y);
+        ctx.fillText(bits, drop.x, snap(drop.y));
       }
       ctx.restore();
     }
@@ -248,7 +257,7 @@ export function useVizEngine() {
         const maxW = regionRight - regionLeft - 6;
         while (txt.length > 4 && ctx.measureText(txt).width > maxW) txt = txt.slice(0, -1);
         ctx.fillStyle = line.bright ? "rgba(0,255,136,0.42)" : "rgba(0,255,136,0.16)"; // 低调绿色
-        ctx.fillText(txt, regionLeft, line.y);
+        ctx.fillText(txt, regionLeft, snap(line.y));
       }
       ctx.restore();
     }

@@ -61,6 +61,17 @@ test("心跳/空白内容不产生事件，carry 为空字符串", () => {
   assert.equal(r.carry, "");
 });
 
+test("带 tool_calls 的 delta 原样透传（重组由 ToolCallAccumulator 处理）", () => {
+  const delta =
+    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"fetch","arguments":""}}]}}]}\n';
+  const r = parseSSEChunk(delta);
+  assert.equal(r.events.length, 1);
+  const json = JSON.parse(r.events[0]);
+  const tc = json.choices[0].delta.tool_calls[0];
+  assert.equal(tc.function.name, "fetch");
+  assert.equal(tc.id, "call_1");
+});
+
 test("连续多次调用累计多个事件与 done", () => {
   let carry = "";
   let done = false;

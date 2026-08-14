@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import { MODEL_CONFIG } from "../config/modelConfig.js";
 import { parseSSEChunk } from "../lib/sse.js";
 import { isDevMode, onDevModeChange } from "../lib/devMode.js";
+import { MCPClient } from "../lib/mcpClient.js";
+import { ToolCallAccumulator } from "../lib/toolCalls.js";
+import { runAgentLoop } from "../lib/agentLoop.js";
 
 /**
  * 主对话窗口控制器（集成于频谱可视化器）—— 页面核心交互区。
@@ -12,11 +15,54 @@ import { isDevMode, onDevModeChange } from "../lib/devMode.js";
  * （请求状态 → 附加上下文 → 实际提示词 → 流式回复），由 ChatTraceDrawer 浮层消费。
  * 浮层在对话发起瞬间自动弹出（setTraceOpen(true)），无需按钮触发。
  */
+// 复制文本到剪贴板，并在按钮上给出「已复制」瞬时反馈（不依赖全局 toast）
+function copyText(text, btn) {
+  const done = () => {
+    if (btn) {
+      btn.textContent = "已复制";
+      btn.classList.add("copied");
+      setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1200);
+    }
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done, done);
+  } else {
+    // 回退：临时 textarea + execCommand
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    } catch (e) { /* 忽略 */ }
+    done();
+  }
+}
+
+// 给消息气泡挂一个「复制」按钮（目前仅 AI 回复；如需用户消息也可放开）
+function attachCopyButton(wrap, bubble) {
+  const copyBtn = document.createElement("button");
+  copyBtn.className = "chat-copy";
+  copyBtn.type = "button";
+  copyBtn.textContent = "复制";
+  copyBtn.setAttribute("aria-label", "复制回复");
+  copyBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    copyText(bubble.textContent, copyBtn);
+  });
+  wrap.appendChild(copyBtn);
+}
+
 export function useChatController() {
   // —— 过程可视化状态（最小侵入：仅这一份 React 状态，抽屉是唯一消费者）——
   const [trace, setTrace] = useState(null);
   const [traceOpen, setTraceOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);   // 面板开合由 React 状态驱动，避免重渲染把 className 写回导致关闭失效
   const closeTrace = () => setTraceOpen(false);
+  const toggleTrace = () => setTraceOpen((v) => !v);   // 一键显示/隐藏 5 个对话流浮层
 
   useEffect(() => {
     "use strict";
@@ -39,6 +85,53 @@ export function useChatController() {
     const sendBtn = document.getElementById("chatSend");
 
     const state = { history: [], busy: false };
+
+    // ============ MCP 工具调用（Agent 能力 · 第一期 fetch，详见 MCP-INTEGRATION-PLAN.md） ============
+    // 浏览器不直接连接 MCP 服务器（无法 spawn stdio / 持有凭据），而是经同源 /api/mcp
+    // 代理到 Node 侧 MCP Relay。下面只持有客户端与缓存，编排逻辑在 handleSend 内。
+    const mcpClient = new MCPClient(MODEL_CONFIG.mcpRelay);
+    let cachedOpenAITools = null;   // OpenAI function 格式（带缓存，避免每轮请求）
+    let cachedToolsFlat = null;     // 扁平 MCP tools（带 server 字段，用于 trace 展示）
+
+    // 拉取并缓存可用工具；失败或空结果不缓存，便于 Relay 恢复后下次重试
+    async function getTools() {
+      if (!MODEL_CONFIG.toolsEnabled || !MODEL_CONFIG.supportsTools) return [];
+      if (cachedOpenAITools) return cachedOpenAITools;
+      try {
+        const flat = await mcpClient.listTools();
+        if (Array.isArray(flat) && flat.length) {
+          cachedToolsFlat = flat;
+          cachedOpenAITools = MCPClient.toOpenAITools(flat);
+          return cachedOpenAITools;
+        }
+        return [];
+      } catch (e) {
+        console.warn("[mcp] 拉取工具失败，本轮降级为无工具对话：", (e && e.message) || e);
+        return [];
+      }
+    }
+
+    // 把工具调用事件同步进 trace（供 ChatTraceDrawer「06 工具调用」段渲染）
+    function traceToolEvents(ev) {
+      setTrace((prev) => {
+        if (!prev || !prev.mcp) return prev;
+        const mcp = { ...prev.mcp, invocations: prev.mcp.invocations ? [...prev.mcp.invocations] : [] };
+        if (ev.type === "assistant_toolcalls") {
+          mcp.status = "running";
+        } else if (ev.type === "tool") {
+          const inv = ev.invocation;
+          const server = cachedToolsFlat
+            ? (cachedToolsFlat.find((t) => t.name === inv.name) || {}).server || ""
+            : "";
+          mcp.invocations.push({ ...inv, server });
+        } else if (ev.type === "final") {
+          if (mcp.status === "running") mcp.status = "ok";
+        } else if (ev.type === "error") {
+          mcp.status = "error";
+        }
+        return { ...prev, mcp };
+      });
+    }
 
     // ============ 可拖拽 / 可缩放 / 布局持久化（DialogController） ============
     const LS_LAYOUT = "cyber-chat-layout-v2";
@@ -89,7 +182,7 @@ export function useChatController() {
     let drag = null;
     function onDragStart(e) {
       if (!panel) return;
-      if (e.target.closest(".chat-close, .chat-clear, .dev-label")) return;  // 关闭/清空按钮与 ID 标签不触发拖拽
+      if (e.target.closest(".chat-close, .chat-clear, .chat-trace, .dev-label")) return;  // 关闭/清空/对话流按钮与 ID 标签不触发拖拽
       if (e.button !== undefined && e.button !== 0) return;   // 仅左键
       drag = { px: e.clientX, py: e.clientY, rect: getRect() };
       panel.classList.add("dragging");
@@ -226,6 +319,7 @@ export function useChatController() {
 
       wrap.appendChild(who);
       wrap.appendChild(bubble);
+      if (role === "ai") attachCopyButton(wrap, bubble);   // 回复内容一键复制
       messagesEl.appendChild(wrap);
 
       state.history.push({ role, text, time: ts });
@@ -244,6 +338,7 @@ export function useChatController() {
       bubble.textContent = "";
       wrap.appendChild(who);
       wrap.appendChild(bubble);
+      attachCopyButton(wrap, bubble);            // 流式回复同样支持复制
       messagesEl.appendChild(wrap);
       scrollBottom();
       return {
@@ -283,9 +378,10 @@ export function useChatController() {
     }
 
     // ---------- 真实大模型流式调用（LongCat · OpenAI 兼容 SSE） ----------
-    async function streamLongCat(messages, handlers) {
+    async function streamLongCat(messages, tools, handlers) {
       const onContent = handlers && handlers.onContent;
       const onReasoning = handlers && handlers.onReasoning;
+      const onToolCallDelta = handlers && handlers.onToolCallDelta;
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), MODEL_CONFIG.timeoutMs);
       try {
@@ -303,6 +399,8 @@ export function useChatController() {
             max_tokens: MODEL_CONFIG.maxTokens,
             temperature: MODEL_CONFIG.temperature,
             stream: true,
+            // 仅在确有可用工具时附带 tools；否则走普通对话（降级/无工具场景）
+            ...(tools && tools.length ? { tools } : {}),
           }),
           signal: ctrl.signal,
         });
@@ -331,6 +429,8 @@ export function useChatController() {
             const delta = choice.delta || {};
             if (delta.content) onContent && onContent(String(delta.content));
             if (delta.reasoning_content) onReasoning && onReasoning(String(delta.reasoning_content));
+            // tool_calls 流式碎片：逐片交给累加器重组（重组结果在请求结束时汇总）
+            if (delta.tool_calls) onToolCallDelta && onToolCallDelta(delta.tool_calls);
           }
           if (parsed.done) break;
         }
@@ -376,6 +476,13 @@ export function useChatController() {
           messages: built.messages,
         },
         reply: { text: "", reasoning: "", done: false },
+        // MCP 工具调用区：enabled 表示开关打开；status 随 tool-loop 演进
+        mcp: {
+          enabled: MODEL_CONFIG.toolsEnabled && MODEL_CONFIG.supportsTools,
+          status: "pending",   // pending | running | ok | unavailable | error
+          toolsCount: 0,
+          invocations: [],
+        },
       };
       setTrace(traceInit);
       setTraceOpen(true);                     // 对话发起瞬间自动弹出浮层
@@ -405,28 +512,59 @@ export function useChatController() {
         requestAnimationFrame(flushTrace);
       }
 
+      // —— MCP tool-loop 编排所需的两次回调（闭包捕获本轮 answer/bubble 等） ——
+      // 单次 LLM 请求：流式合并 content / reasoning / tool_calls 后返回给 agentLoop。
+      async function requestLLM(messages, tools) {
+        answer = ""; reasoning = "";            // 每轮重置，避免跨轮累积
+        const acc = new ToolCallAccumulator();
+        let err = null;
+        try {
+          await streamLongCat(messages, tools, {
+            onContent: (d) => { beginStream(); answer += d; if (bubble) bubble.set(answer); scheduleTraceFlush(); },
+            onReasoning: (d) => { beginStream(); reasoning += d; scheduleTraceFlush(); },
+            onToolCallDelta: (tc) => { acc.add(tc); beginStream(); scheduleTraceFlush(); },
+          });
+        } catch (e) {
+          err = (e && e.message) ? e.message : "未知错误";
+        }
+        return { content: answer, reasoning, toolCalls: acc.toMessageToolCalls(), error: err };
+      }
+
+      // 执行单个 MCP 工具（经 Relay）；错误向上抛，由 agentLoop 兜底回填
+      async function executeTool(name, args, callId) {
+        const r = await mcpClient.callTool(name, args);
+        return { content: r.content, isError: r.isError };
+      }
+
       try {
-        await streamLongCat(built.messages, {
-          onContent: (delta) => {
-            beginStream();
-            answer += delta;
-            if (bubble) bubble.set(answer);
-            scheduleTraceFlush();
-          },
-          onReasoning: (delta) => {
-            beginStream();
-            reasoning += delta;
-            scheduleTraceFlush();
-          },
+        // —— Agent tool-loop：检测 tool_calls → 调工具 → 回填 → 再请求（≤N 次） ——
+        const result = await runAgentLoop({
+          messages: built.messages,
+          getTools,
+          requestLLM,
+          executeTool,
+          maxIterations: MODEL_CONFIG.maxToolIterations,
+          onEvent: traceToolEvents,
         });
 
+        if (result.llmFailed) {
+          // LLM 请求失败：复用原兜底逻辑（与下方 catch 一致）
+          throw new Error(result.llmError || "LLM 请求失败");
+        }
+
         if (!started) beginStream();          // 极少见：无任何增量也需定稿
-        if (bubble) bubble.finalize(answer);
-        state.history.push({ role: "assistant", text: answer, time: Date.now() });
+        if (bubble) bubble.finalize(result.finalContent);
+        state.history.push({ role: "assistant", text: result.finalContent, time: Date.now() });
         saveHistory();
         setTrace((prev) => (prev ? {
           ...prev, status: "done",
-          reply: { ...prev.reply, text: answer, reasoning, done: true },
+          mode: result.degraded ? "longcat-no-mcp" : "longcat",
+          reply: { ...prev.reply, text: result.finalContent, reasoning: result.finalReasoning, done: true },
+          mcp: {
+            ...prev.mcp,
+            status: result.degraded ? "unavailable" : (prev.mcp?.status || "ok"),
+            toolsCount: cachedOpenAITools?.length || 0,
+          },
         } : prev));
         // 触发“内容输出”页面特效，并在爆发结束后回落到 idle
         if (window.CyberFx) {
@@ -448,12 +586,14 @@ export function useChatController() {
           setTrace((prev) => (prev ? {
             ...prev, status: "fallback", mode: "local", error: reason,
             reply: { ...prev.reply, text: finalText, reasoning, done: true },
+            mcp: { ...prev.mcp, status: "error" },
           } : prev));
         } else {
           finalText = "响应失败：" + reason;
           setTrace((prev) => (prev ? {
             ...prev, status: "error", error: reason,
             reply: { ...prev.reply, text: finalText, reasoning, done: true },
+            mcp: { ...prev.mcp, status: "error" },
           } : prev));
         }
         // 渲染最终文本到气泡（已流式则定稿，否则新建）
@@ -475,8 +615,9 @@ export function useChatController() {
     }
 
     function setChat(open) {
-      panel.classList.toggle("open", open);
-      panel.setAttribute("aria-hidden", open ? "false" : "true");
+      // 开合交由 React 状态（panelOpen）驱动 className / aria-hidden，
+      // 不再手动操作 DOM class，避免组件重渲染时 JSX 的 className 把 open 写回。
+      setPanelOpen(open);
       if (openBtn) {
         openBtn.textContent = open ? "▾ 收起对话" : "▸ AI 对话";
         openBtn.classList.toggle("active", open);
@@ -535,5 +676,5 @@ export function useChatController() {
     init();
   }, []);
 
-  return { trace, traceOpen, closeTrace };
+  return { trace, traceOpen, closeTrace, toggleTrace, panelOpen };
 }

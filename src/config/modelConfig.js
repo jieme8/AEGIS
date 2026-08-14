@@ -34,6 +34,15 @@ export const MODEL_CONFIG = {
   // 是否由浏览器携带 Authorization：dev 经代理、由代理注入，浏览器不发送
   sendAuthFromBrowser: !IS_DEV,
   model: "LongCat-2.0",
+  // —— MCP 工具调用（Agent 能力，第一期 fetch，详见 MCP-INTEGRATION-PLAN.md）——
+  // D1 确认 LongCat-2.0 支持 OpenAI 兼容 tool_calls，无需更换模型。
+  supportsTools: true,
+  // 是否启用 MCP 工具调用（经同源 /api/mcp 代理到 Node 侧 MCP Relay）
+  toolsEnabled: true,
+  // 浏览器侧 MCP 门面请求的同源前缀（由 vite 代理转发到 Relay，见 vite.config.js）
+  mcpRelay: "/api/mcp",
+  // tool-loop 最大迭代次数（防失控）
+  maxToolIterations: 5,
   // LongCat-2.0 为推理模型：推理过程(reasoning_content)与最终回答(content)
   // 共用 max_tokens 预算。预算过小会导致推理吃光额度、正文为空。
   // 设为 2000 以保证推理后仍有充足额度输出正文（流式下正文才会真正显示）。

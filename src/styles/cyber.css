@@ -8,7 +8,7 @@
     --panel:   rgba(8,14,26,0.55);
     --txt:     #c8f4ff;
     --dim:     #4a6b80;
-    --mono: ui-monospace, "SF Mono", "Cascadia Code", "Consolas",
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", "Consolas",
             "Roboto Mono", Menlo, monospace;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -127,6 +127,16 @@
   .chat-toggle:hover { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,0.6); }
   .chat-toggle.active { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,0.6); }
 
+  /* MCP 服务器入口（与 ChatToggle 同款样式，复用页面 neon 语言） */
+  .mcp-toggle {
+    pointer-events: auto; cursor: pointer; margin-top: 6px; padding-top: 6px;
+    border-top: 1px solid rgba(0,240,255,0.25);
+    color: var(--cyan); letter-spacing: 2px; font-size: 11px;
+    text-shadow: 0 0 8px rgba(0,240,255,0.6); transition: color .15s, text-shadow .15s;
+  }
+  .mcp-toggle:hover { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,0.6); }
+  .mcp-toggle.active { color: var(--magenta); text-shadow: 0 0 8px rgba(255,43,214,0.6); }
+
   /* 主对话窗口：页面核心交互区（非侧栏）
    * 布局位置：由 JS 动态设置 left/top/width/height（支持拖拽/缩放/持久化）；
    *           CSS 仅提供 calc() 兜底默认值，避免脚本执行前的尺寸闪跳。
@@ -194,6 +204,17 @@
   .chat-clear:hover:not(:disabled) { color: #ffd54a; border-color: #ffd54a; box-shadow: 0 0 8px rgba(255,196,0,0.4); }
   .chat-clear:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: auto; }
 
+  /* 对话流一键显示/隐藏（与 clear 同款尺寸，青色呼应浮层主题） */
+  .chat-trace {
+    cursor: pointer; color: var(--cyan); pointer-events: auto;
+    border: 1px solid rgba(0,240,255,0.3); border-radius: 6px;
+    height: 28px; padding: 0 10px; display: flex; align-items: center; justify-content: center;
+    background: transparent; font-size: 11px; letter-spacing: 1px; line-height: 1;
+    transition: color .15s, border-color .15s, box-shadow .15s;
+  }
+  .chat-trace:hover { color: #9af6ff; border-color: var(--cyan); box-shadow: 0 0 8px rgba(0,240,255,0.35); }
+  .chat-trace.active { color: var(--bg); background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,240,255,0.5); }
+
   .chat-messages {
     flex: 1 1 auto; overflow-y: auto; padding: 14px 14px 6px;
     display: flex; flex-direction: column; gap: 12px;
@@ -220,6 +241,15 @@
   .chat-msg.error .bubble {
     background: rgba(255,93,108,0.12); border: 1px solid rgba(255,93,108,0.5); color: #ffd0d4;
   }
+
+  /* 回复内容复制按钮：仅 AI 气泡挂接，跟随气泡左对齐 */
+  .chat-copy {
+    align-self: flex-start; margin: 5px 0 0; cursor: pointer; color: var(--cyan);
+    background: transparent; border: 1px solid rgba(0,240,255,0.3); border-radius: 5px;
+    font-size: 10px; letter-spacing: 1px; padding: 1px 9px; transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .chat-copy:hover { background: rgba(0,240,255,0.15); box-shadow: 0 0 8px rgba(0,240,255,0.3); }
+  .chat-copy.copied { color: #04060c; background: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 12px rgba(0,240,255,0.5); }
 
   .chat-typing .bubble { display: inline-flex; gap: 4px; padding: 11px 14px; }
   .chat-typing .tdot {
@@ -397,25 +427,25 @@
   .form-switch {
     position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
     z-index: 9;
-    display: flex; align-items: center; gap: 6px;
-    padding: 6px 10px;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
     background: var(--panel);
     border: 1px solid rgba(0,240,255,0.25);
-    border-radius: 8px;
+    border-radius: 10px;
     backdrop-filter: blur(6px);
     box-shadow: 0 0 18px rgba(0,240,255,0.10);
   }
   .form-switch .fs-label {
-    font-size: 10px; letter-spacing: 2px; color: var(--dim);
+    font-size: 13px; letter-spacing: 2px; color: var(--dim);
     margin-right: 2px;
   }
   .form-btn {
-    font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
+    font-family: var(--mono); font-size: 16px; letter-spacing: 1px;
     color: var(--txt);
     background: rgba(0,240,255,0.06);
     border: 1px solid rgba(0,240,255,0.20);
-    border-radius: 5px;
-    padding: 4px 12px;
+    border-radius: 6px;
+    padding: 8px 20px;
     cursor: pointer;
     transition: all .18s;
   }
@@ -429,6 +459,12 @@
   /* 形态切换按钮仅在编辑模式下可见 */
   .form-switch { display: none; }
   body.dev-mode .form-switch { display: flex; }
+
+  /* 编辑态可拖拽提示：仅 dev-mode 下这些元素可移动（与其他可拖拽组件一致，仅 grab 光标、无描边） */
+  body.dev-mode .hud.draggable,
+  body.dev-mode .form-switch.draggable { cursor: grab; }
+  body.dev-mode .hud.draggable.dragging,
+  body.dev-mode .form-switch.draggable.dragging { cursor: grabbing; }
 
   /* 标签可点击复制 */
   .dev-label { pointer-events: auto; cursor: pointer; transition: filter .12s, background .12s; }
@@ -465,12 +501,14 @@
   /* 组件清单（编辑模式，可折叠）：列出全部组件含背景特效，逐行可复制 */
   .dev-legend {
     position: fixed; left: 16px; bottom: 60px; z-index: 33;
-    width: 220px; pointer-events: auto; display: none;
+    width: 240px; pointer-events: auto; display: none;
     font-family: var(--mono); font-size: 11px; letter-spacing: .5px;
     background: rgba(4,6,12,0.94); border: 1px solid rgba(0,240,255,0.45);
     border-radius: 8px; box-shadow: 0 0 22px rgba(0,240,255,0.18);
     backdrop-filter: blur(4px); overflow: hidden;
+    cursor: grab;
   }
+  .dev-legend.dragging { cursor: grabbing; }
   body.dev-mode .dev-legend { display: block; }
   .dev-legend-head {
     display: flex; align-items: center; justify-content: space-between;
@@ -478,7 +516,7 @@
     border-bottom: 1px solid rgba(0,240,255,0.2); user-select: none;
   }
   .dev-legend-head .cnt { color: var(--dim); font-size: 10px; }
-  .dev-legend-body { max-height: 280px; overflow-y: auto; }
+  .dev-legend-body { max-height: 420px; overflow-y: auto; }
   .dev-legend.collapsed .dev-legend-body { display: none; }
   .dev-legend-group { padding: 6px 10px 2px; color: var(--magenta);
     font-size: 10px; letter-spacing: 1px; opacity: .85; }
@@ -492,59 +530,81 @@
   .dev-legend::-webkit-scrollbar { width: 6px; }
   .dev-legend::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
 
-  /* ===================== 模型对话过程浮层 (ChatTraceDrawer) ===================== */
-  /* 模型对话过程 · 独立浮层（Portal 挂到 body，相对视口自由浮动，不受任何父容器限制） */
-  .trace-float {
+  /* ===================== 模型对话过程 · 内容样式（被 6 个独立浮层共用） ===================== */
+  /* 外层浮层容器样式见「通用独立浮层 (FloatingPanel)」一节；
+     原 ChatTraceDrawer 的整块浮层已废弃，拆为 6 个独立浮层。 */
+  /* 浮层入场 / 收起：左右对称的关键帧，增强位移 + 缩放 + 辉光脉冲，提升“弹出/收起”表现力。
+     float-in 由 .enter 应用（backwards 让级联延迟期保持隐藏）；
+     float-out 由 .exit 应用（forwards 让收起后停在隐藏态，直到 React 卸载）。 */
+  @keyframes float-in {
+    from {
+      opacity: 0;
+      transform: translateY(30px) scale(.9);
+      box-shadow: 0 0 0 rgba(0,240,255,0);
+    }
+    55% {
+      opacity: 1;
+      box-shadow: 0 0 48px rgba(0,240,255,0.55), inset 0 0 26px rgba(0,240,255,0.14);
+    }
+    to {
+      opacity: 1; transform: none;
+      box-shadow: 0 0 32px rgba(0,240,255,0.20), inset 0 0 20px rgba(0,240,255,0.05);
+    }
+  }
+  @keyframes float-out {
+    from {
+      opacity: 1; transform: none;
+      box-shadow: 0 0 32px rgba(0,240,255,0.20), inset 0 0 20px rgba(0,240,255,0.05);
+    }
+    45% {
+      opacity: 1;
+      box-shadow: 0 0 40px rgba(0,240,255,0.40), inset 0 0 22px rgba(0,240,255,0.10);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(26px) scale(.88);
+      box-shadow: 0 0 0 rgba(0,240,255,0);
+    }
+  }
+
+  /* ===================== 通用独立浮层 (FloatingPanel) ===================== */
+  /* 模型对话过程拆成的 6 个独立小块，各是一个这样的浮层，放在桌面上、可独立拖动 */
+  .float-panel {
     position: fixed;                   /* 视口级定位，可在整页任意拖动 */
-    top: 351px; left: 429px; right: auto; /* 默认锚点：(429, 351)，可拖动到任意位置 */
-    width: 340px; max-width: calc(100vw - 40px);
-    max-height: 80vh;                  /* 视口级上限，内容过多则内部滚动 */
+    right: auto;
+    max-height: 80vh;
     display: flex; flex-direction: column; overflow: hidden;
-    z-index: 60;                       /* 独立浮层，高于页面各层（含聊天面板） */
+    z-index: 60;
     background: linear-gradient(180deg, rgba(10,18,32,0.94), rgba(6,11,22,0.94));
     border: 1px solid rgba(0,240,255,0.35); border-radius: 10px;
     box-shadow: 0 0 32px rgba(0,240,255,0.20), inset 0 0 20px rgba(0,240,255,0.05);
     backdrop-filter: blur(8px);
-    animation: trace-pop .2s cubic-bezier(.2,.8,.2,1);
+    /* 入场/收起动画由 .enter / .exit 类切换；错落延迟经 inline animation-delay 注入 */
   }
-  .trace-float.dragging { cursor: grabbing; }
-  @keyframes trace-pop { from { transform: translateY(12px) scale(.98); opacity: 0; } to { transform: none; opacity: 1; } }
+  .float-panel.enter { animation: float-in .38s cubic-bezier(.2,.85,.25,1) backwards; }
+  .float-panel.exit  { animation: float-out .32s cubic-bezier(.5,0,.2,1) forwards; pointer-events: none; }
+  .float-panel.dragging { cursor: grabbing; }
 
-  .trace-head {
+  .float-head {
     display: flex; align-items: center; gap: 8px; padding: 7px 11px;
     border-bottom: 1px solid rgba(0,240,255,0.22);
     background: linear-gradient(90deg, rgba(0,240,255,0.10), rgba(177,75,255,0.06));
-    cursor: grab; touch-action: none; user-select: none;   /* 拖拽手柄 */
+    cursor: grab; touch-action: none; user-select: none;
   }
-  .trace-head:active { cursor: grabbing; }
-  .trace-title {
+  .float-head:active { cursor: grabbing; }
+  .float-title {
     flex: 1 1 auto; font-size: 12px; letter-spacing: 1px; font-weight: 700;
     color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,0.6);
   }
-  .trace-status {
-    display: inline-flex; align-items: center; gap: 4px; font-size: 10px;
-    letter-spacing: .5px; padding: 2px 8px; border-radius: 999px;
-    border: 1px solid currentColor; white-space: nowrap;
-  }
-  .trace-status .trace-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
-  .trace-status.active .trace-dot { animation: trace-pulse 1s ease-in-out infinite; }
-  .trace-status.pending { color: var(--dim); }
-  .trace-status.active  { color: var(--cyan); }
-  .trace-status.done    { color: #38ffa0; }
-  .trace-status.warn    { color: #ffcf4d; }
-  .trace-status.err     { color: #ff5c74; }
-  @keyframes trace-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .5; } }
-
-  .trace-close {
+  .float-close {
     width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid rgba(0,240,255,0.3);
     border-radius: 5px; background: transparent; color: var(--cyan); font-size: 14px;
     line-height: 1; cursor: pointer; transition: background .15s;
   }
-  .trace-close:hover { background: rgba(0,240,255,0.15); }
-
-  .trace-body { flex: 1 1 auto; min-height: 0; padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
-  .trace-body::-webkit-scrollbar { width: 6px; }
-  .trace-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  .float-close:hover { background: rgba(0,240,255,0.15); }
+  .float-body { flex: 1 1 auto; min-height: 0; padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
+  .float-body::-webkit-scrollbar { width: 6px; }
+  .float-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
 
   .trace-section { border: 1px solid rgba(0,240,255,0.18); border-radius: 8px; background: rgba(8,14,26,0.5); overflow: hidden; }
   .trace-section > summary {
@@ -601,12 +661,6 @@
   .trace-hist-item.user .trace-role { color: var(--cyan); }
   .trace-hist-item.assistant .trace-role { color: var(--magenta); }
   .trace-htext { color: var(--txt); white-space: pre-wrap; word-break: break-word; opacity: .92; }
-
-  .trace-reply {
-    font-size: 12px; line-height: 1.6; color: var(--txt); white-space: pre-wrap;
-    word-break: break-word; background: rgba(0,0,0,0.28);
-    border: 1px solid rgba(0,240,255,0.15); border-radius: 6px; padding: 8px 10px; min-height: 32px;
-  }
   .trace-cursor {
     display: inline-block; width: 7px; height: 13px; margin-left: 2px; vertical-align: -2px;
     background: var(--cyan); box-shadow: 0 0 8px var(--cyan); animation: trace-blink 1s steps(1) infinite;
@@ -632,6 +686,86 @@
   .trace-loading .tdot:nth-child(3) { animation-delay: .3s; }
   @keyframes trace-bounce { 0%,80%,100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-5px); opacity: 1; } }
   .trace-loading-label { margin-left: 3px; }
+
+  /* ===================== MCP 服务器列表浮层 ===================== */
+  /* 复用 ChatTraceDrawer 的浮层语言（Portal 挂 body，视口级定位，可拖动） */
+  .mcp-panel {
+    position: fixed; top: 80px; left: 16px; right: auto;   /* 默认位置 left:16 top:80（左上偏移） */
+    width: 300px; max-width: calc(100vw - 32px);
+    display: flex; flex-direction: column; overflow: hidden;
+    z-index: 60;
+    background: linear-gradient(180deg, rgba(10,18,32,0.94), rgba(6,11,22,0.94));
+    border: 1px solid rgba(0,240,255,0.35); border-radius: 10px;
+    box-shadow: 0 0 32px rgba(0,240,255,0.20), inset 0 0 20px rgba(0,240,255,0.05);
+    backdrop-filter: blur(8px);
+    animation: float-in .3s cubic-bezier(.2,.85,.25,1) backwards;
+  }
+  .mcp-panel.dragging { cursor: grabbing; }
+
+  .mcp-head {
+    display: flex; align-items: center; gap: 8px; padding: 7px 11px;
+    border-bottom: 1px solid rgba(0,240,255,0.22);
+    background: linear-gradient(90deg, rgba(0,240,255,0.10), rgba(177,75,255,0.06));
+    cursor: grab; touch-action: none; user-select: none;
+  }
+  .mcp-head:active { cursor: grabbing; }
+  .mcp-title {
+    flex: 1 1 auto; font-size: 12px; letter-spacing: 1px; font-weight: 700;
+    color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,0.6);
+  }
+  .mcp-count {
+    font-size: 10px; letter-spacing: .5px; color: var(--dim);
+    padding: 2px 8px; border: 1px solid rgba(0,240,255,0.3); border-radius: 999px; white-space: nowrap;
+  }
+  .mcp-close {
+    width: 22px; height: 22px; flex: 0 0 auto; border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 5px; background: transparent; color: var(--cyan); font-size: 14px;
+    line-height: 1; cursor: pointer; transition: background .15s;
+  }
+  .mcp-close:hover { background: rgba(0,240,255,0.15); }
+
+  .mcp-body { flex: 1 1 auto; min-height: 0; padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; max-height: 70vh; }
+  .mcp-body::-webkit-scrollbar { width: 6px; }
+  .mcp-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+
+  .mcp-row {
+    border: 1px solid rgba(0,240,255,0.18); border-radius: 8px;
+    background: rgba(8,14,26,0.5); padding: 7px 9px; display: flex; flex-direction: column; gap: 5px;
+  }
+  .mcp-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .mcp-name {
+    font-size: 12px; letter-spacing: .5px; color: var(--txt); font-weight: 700;
+    text-shadow: 0 0 6px rgba(0,240,255,0.3);
+  }
+  .mcp-badge {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 10px;
+    letter-spacing: .5px; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid currentColor; white-space: nowrap;
+  }
+  .mcp-badge .mcp-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 7px currentColor; }
+  .mcp-badge.active .mcp-dot { animation: trace-pulse 1s ease-in-out infinite; }
+  .mcp-badge.done    { color: #38ffa0; }
+  .mcp-badge.active  { color: var(--cyan); }
+  .mcp-badge.pending { color: var(--dim); }
+  .mcp-badge.err     { color: #ff5c74; }
+
+  .mcp-row-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 10px; color: var(--dim); letter-spacing: .3px; }
+  .mcp-usable   { color: #38ffa0; }
+  .mcp-unusable { color: var(--dim); }
+  .mcp-err { font-size: 10.5px; color: #ff8a98; background: rgba(255,92,116,0.10); border: 1px solid rgba(255,92,116,0.4); border-radius: 5px; padding: 5px 7px; word-break: break-word; }
+
+  .mcp-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+  .mcp-tool {
+    font-size: 10px; letter-spacing: .3px; color: var(--cyan);
+    border: 1px solid rgba(0,240,255,0.3); border-radius: 5px; padding: 1px 7px;
+    background: rgba(0,240,255,0.06);
+  }
+
+  .mcp-empty {
+    font-size: 11px; line-height: 1.6; color: var(--dim); font-style: italic; text-align: center; padding: 10px 4px;
+  }
+  .mcp-empty.err { color: #ff8a98; font-style: normal; }
+  .mcp-empty code { color: var(--cyan); background: rgba(0,0,0,0.3); padding: 1px 5px; border-radius: 4px; font-size: 10px; }
 
   /* ===== 油价行情卡片停靠位（主页集成） ===== */
   .oil-dock {
@@ -670,7 +804,7 @@
   }
   /* B. 仅淡入的元素（保留自身 transform 居中 / 开合动画）：opacity + visibility，
          transform 维持 .28s 以保障 chat 开合位移 */
-  #stage, .form-switch, .chat-panel, .dev-toggle {
+  #stage, .form-switch, .dev-toggle {
     transition:
       opacity    var(--dur, .6s) var(--ease, ease) var(--delay, 0ms),
       visibility var(--dur, .3s) var(--delay, 0ms),
@@ -706,7 +840,6 @@
   body.booted .form-switch,
   body.booted .hacker-drag-zone,
   body.booted .oil-dock,
-  body.booted .chat-panel,
   body.booted .dev-toggle { opacity: 1; }
   body.booted .dev-toggle { --delay: 1300ms; }   /* 调试开关最后淡入 */
 
