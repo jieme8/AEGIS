@@ -3,7 +3,6 @@ export const DEV_NAMES = {
   "fx-scanbar": "移动扫描光带",
   "fx-spectrum": "频谱可视化画布",
   "fx-title": "顶部故障标题",
-  "hud-tl": "左上 HUD · 系统状态",
   "hud-tr": "右上 HUD · 单位/频段",
   "hud-bl": "左下 HUD · 能量/峰值",
   "hud-br": "右下 HUD · 频率/增益",
@@ -23,6 +22,6 @@ export const DEV_NAMES = {
 // 清单分组（顺序即展示顺序）
 export const DEV_GROUPS = [
   { title: "主组件 / 交互", ids: ["fx-spectrum", "fx-bars", "fx-title", "fx-scanbar", "fx-hacker-stream", "chat-panel", "fx-form-switch", "trace-float"] },
-  { title: "HUD 面板", ids: ["hud-tl", "hud-tr", "hud-bl", "hud-br"] },
+  { title: "HUD 面板", ids: ["hud-tr", "hud-bl", "hud-br"] },
   { title: "背景特效（不可移动）", ids: ["fx-ring", "fx-grid", "fx-data-rain", "fx-scanlines", "fx-vignette", "fx-glitch"] },
 ];

@@ -12,7 +12,13 @@
  *   浏览器直连真实端点；需确保该端点允许你的部署域 CORS，
  *   否则应自建后端代理转发（避免密钥暴露到前端 bundle）。
  */
-const LONGCHAT_API_KEY = "ak_2jJ7rL9fb9re8xg22J4Vu26H6RY6k";
+// 从 .env 读取（Vite 注入前端），不再硬编码密钥
+// 变量名必须是 VITE_ 前缀才能暴露到浏览器 bundle
+const LONGCHAT_API_KEY =
+  (typeof import.meta !== "undefined" &&
+    import.meta.env &&
+    import.meta.env.VITE_LONGCAT_API_KEY) ||
+  "";
 
 // 是否为开发环境（Vite 注入）。非 ESM 环境（如 Node test）默认按生产处理。
 const IS_DEV =

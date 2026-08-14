@@ -20,15 +20,25 @@ import { useEffect, useRef, useState } from "react";
 import "./oil-price.css";
 import { isDevMode, onDevModeChange } from "../../lib/devMode.js";
 
-/* 数字计数入场动效（easeOutCubic，仅播放一次） */
-function useCountUp(target, duration = 900) {
-  const [val, setVal] = useState(target);
-  const fromRef = useRef(target);
+/* 数字计数入场动效（easeOutCubic）。
+   修复：原本 from===to 导致首屏完全不播放。现改为从 0 生长到目标值，
+   并由 gate（boot 完成）控制触发时机 —— 保证遮罩淡出后数字“从无到有”滚入。 */
+function useCountUp(target, duration = 900, gate = true) {
+  const [val, setVal] = useState(0);
+  const fromRef = useRef(0);
   const rafRef = useRef(0);
   useEffect(() => {
+    if (!gate) {
+      setVal(0);
+      fromRef.current = 0;
+      return;
+    }
     const from = fromRef.current;
     const to = target;
-    if (from === to) return;
+    if (from === to) {
+      setVal(to);
+      return;
+    }
     const start = performance.now();
     const tick = (now) => {
       const t = Math.min(1, (now - start) / duration);
@@ -40,7 +50,7 @@ function useCountUp(target, duration = 900) {
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafRef.current);
-  }, [target, duration]);
+  }, [target, duration, gate]);
   return val;
 }
 
@@ -57,6 +67,7 @@ export function OilPricePanel({
   nextAdjust,
   forecast, // { direction: "up" | "down" | "hold", text }
   basis,
+  booted = false, // 启动序列完成后再触发数字计数入场
 }) {
   const rootRef = useRef(null);
 
@@ -123,7 +134,7 @@ export function OilPricePanel({
   const change = price - prevClose;
   const changePct = prevClose ? (change / prevClose) * 100 : 0;
   const up = change >= 0;
-  const anim = useCountUp(price, 900);
+  const anim = useCountUp(price, 900, booted);
 
   const dCount = nextAdjust ? daysUntil(nextAdjust) : null;
   const dDay =

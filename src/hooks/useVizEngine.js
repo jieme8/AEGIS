@@ -32,7 +32,7 @@ export function useVizEngine() {
       '"Roboto Mono", Menlo, monospace';
 
     // ---------- 复用共享引擎（spectrum-engine.js） ----------
-    const { clamp, lerp, randRange, neonHueAt } = window.SpectrumEngine;
+    const { clamp, lerp, randRange } = window.SpectrumEngine;
 
     // ---------- 运行时状态（由引擎创建，可视化与 AI 共享同一份数据） ----------
     const spectrumState = window.SpectrumEngine.createSpectrumState();
@@ -48,6 +48,12 @@ export function useVizEngine() {
     // 时间戳（用于推算帧间隔 dt）
     let lastTimestamp = 0;
 
+    // 启动入场（从无到有）：booted 后按分层时序让各图层“生成”——
+    // 数据雨/黑客流淡入，fx-bars 自基线逐根生长（左→右扫描），fx-ring 自圆心绽放 +
+    // 顺时针“描边成形”，故障层最后浮现。详见 render() 里的 bootT 分段。
+    const BOOT_REVEAL = 1900;        // 入场总时长（ms）
+    let bootRampStart = 0;           // booted 后计时起点
+
     // 向 AI 助手暴露实时频谱快照，实现“共享运行环境、实时响应数据”
     window.SpectrumAPI = {
       snapshot: () => window.SpectrumEngine.snapshot(spectrumState),
@@ -59,11 +65,32 @@ export function useVizEngine() {
     let vizFormFrom = "default";                     // 过渡起始形态
     let formMix = 1;                                 // 过渡进度 0→1（1=完全到达目标）
     let formTimer = 0;
-    const FORM_DUR = 0.65;                           // 形态切换（形变）时长（秒）
+    let formFlash = 0;                               // 切换瞬间爆闪/脉冲，强化状态变更感知
+    const FORM_DUR = 1.05;                           // 形态切换（形变）时长（秒）——延长以更可感知
 
-    // 缓动曲线：smooth in-out cubic，过渡自然不突兀
+    // 缓动曲线：带轻微过冲的回弹（back-ease），切换有“弹起”表现力而非平淡插值
+    function easeOutBack(x) {
+      const c1 = 1.70158, c3 = c1 + 1;
+      return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+    }
+
+    // 缓动曲线：平滑进出（用于启动暖机 ramp，0→1 自然生长）
     function easeInOutCubic(x) {
-      return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+      return x < 0.5
+        ? 4 * x * x * x
+        : 1 - Math.pow(-2 * x + 2, 3) / 2;
+    }
+    // 缓动曲线：平滑减速（淡入层用）
+    function easeOutCubic(x) {
+      return 1 - Math.pow(1 - x, 3);
+    }
+    // 把进度夹到 [0,1]
+    function clamp01(v) {
+      return v < 0 ? 0 : v > 1 ? 1 : v;
+    }
+    // 分段进度：在 [start, start+dur] 内从 0→1，区间外夹到 0/1
+    function seg(t, start, dur) {
+      return clamp01((t - start) / dur);
     }
 
     function syncFormButtons() {
@@ -84,6 +111,7 @@ export function useVizEngine() {
         vizForm = f;
         formMix = 0;
         formTimer = 0;
+        formFlash = 1;                               // 触发切换爆闪
         syncFormButtons();
       },
       getForm() { return vizForm; },
@@ -340,20 +368,27 @@ export function useVizEngine() {
 
     // ---------- 频谱柱（形态间“形变”过渡：逐柱插值高度/发光/色相，而非淡入淡出） ----------
     function barStyle(form, i, t) {
+      const n = CONFIG.barCount > 1 ? i / (CONFIG.barCount - 1) : 0;
       if (form === "thinking") {
+        // 思考：冷静青色，平滑流动的缓慢正弦波
         const w = 0.24 + 0.17 * Math.sin(i * 0.30 - t * 2.4) + 0.05 * Math.sin(i * 0.12 + t * 1.4);
         return { h: Math.max(0.02, w), glow: 5, topA: 0.45, peakA: 0, hue: 195, s0: 80, l0: 60, s1: 75, l1: 38 };
       } else if (form === "output") {
-        const spike = 0.22 * Math.max(0, Math.sin(i * 0.18 - t * 6.0));
-        const hue = neonHueAt(i / CONFIG.barCount);
-        return { h: Math.min(1, barLevels[i] * 1.25 + spike), glow: 11, topA: 0.7, peakA: 0.7, hue, s0: 100, l0: 66, s1: 95, l1: 44 };
+        // 输出：炽热红橙 + 高速行进尖刺 + 节拍脉冲（高能喷涌，与默认态强区分）
+        const beat = 0.5 + 0.5 * Math.sin(t * 7.0);
+        const spike = 0.30 * Math.max(0, Math.sin(i * 0.20 - t * 9.0));
+        const h = Math.min(1, barLevels[i] * 1.30 + spike + 0.12 * beat);
+        const hue = 6 + 16 * n;            // 红→橙，炽热
+        return { h, glow: 18, topA: 0.95, peakA: 0.85, hue, s0: 100, l0: 66, s1: 96, l1: 46 };
       } else {
-        const hue = neonHueAt(i / CONFIG.barCount);
-        return { h: Math.min(1, barLevels[i] * 1.04), glow: 13, topA: 0.8, peakA: 0.75, hue, s0: 100, l0: 68, s1: 96, l1: 48 };
+        // 默认/待命：冷紫蓝，缓慢呼吸的相干波形（平稳监听，与输出态强区分）
+        const breathe = 0.26 + 0.10 * barLevels[i] + 0.08 * Math.sin(i * 0.18 - t * 1.1);
+        const hue = 255 + 40 * n;          // 蓝→紫，冷静
+        return { h: Math.max(0.04, breathe), glow: 9, topA: 0.5, peakA: 0.35, hue, s0: 85, l0: 58, s1: 80, l1: 40 };
       }
     }
 
-    function drawSpectrumBars(formFrom, formTo, e, dt) {
+    function drawSpectrumBars(formFrom, formTo, e, dt, bootT) {
       const baseY = viewHeight;                 // 贴底对齐：基线落在容器底部边缘，不留底部留白
       const gap = viewWidth * 0.004;
       const barWidth = (viewWidth * 0.90 - gap * (CONFIG.barCount - 1)) / CONFIG.barCount;
@@ -373,17 +408,22 @@ export function useVizEngine() {
 
       for (let i = 0; i < CONFIG.barCount; i++) {
         const x = startX + i * (barWidth + gap);
+
+        // 入场：自基线逐根向上生长（左→右扫描 + 回弹），bootT=1 时完全长成
+        const norm = i / (CONFIG.barCount - 1);            // 0(左)→1(右)
+        const barGrow = bootT >= 1 ? 1 : easeOutBack(seg(bootT, 0.16 + norm * 0.22, 0.30));
+
         const A = barStyle(formFrom, i, t);
         const B = barStyle(formTo, i, t);
         const hNorm = A.h + (B.h - A.h) * e;
-        const glow = A.glow + (B.glow - A.glow) * e;
-        const topA = A.topA + (B.topA - A.topA) * e;
+        const glow = A.glow + (B.glow - A.glow) * e + formFlash * 16;
+        const topA = Math.min(1, A.topA + (B.topA - A.topA) * e + formFlash * 0.35);
         const peakA = A.peakA + (B.peakA - A.peakA) * e;
         const hue = A.hue + (B.hue - A.hue) * e;
         const s0 = A.s0 + (B.s0 - A.s0) * e, l0 = A.l0 + (B.l0 - A.l0) * e;
         const s1 = A.s1 + (B.s1 - A.s1) * e, l1 = A.l1 + (B.l1 - A.l1) * e;
 
-        const h = Math.max(0.02, hNorm) * maxHeight;
+        const h = Math.max(0.02, hNorm) * maxHeight * barGrow;
         const c0 = `hsl(${hue}, ${s0}%, ${l0}%)`;
         const c1 = `hsl(${hue}, ${s1}%, ${l1}%)`;
 
@@ -403,7 +443,7 @@ export function useVizEngine() {
         ctx.restore();
 
         if (peakA > 0.01) {
-          const peakY = baseY - barPeaks[i] * maxHeight;
+          const peakY = baseY - barPeaks[i] * maxHeight * barGrow;
           ctx.fillStyle = `hsla(${hue}, 100%, 85%, ${peakA})`;
           ctx.fillRect(x, peakY - 2, barWidth, 1.5);
         }
@@ -412,9 +452,14 @@ export function useVizEngine() {
 
     // ---------- 中央环形波形（形态间“形变”过渡：半径/旋转/色相/签名特效插值） ----------
     function ringStyle(form, t, energy, baseRadius) {
-      if (form === "thinking") return { amplitude: baseRadius * 0.14, rot: t * 0.6, lineW: 2, glow: 7, hue: 190, light: 58, sat: 90 };
-      if (form === "output") return { amplitude: baseRadius * (0.22 + energy * 0.4), rot: t * 2.2, lineW: 3, glow: 12, hue: 0, light: 62, sat: 95 };
-      return { amplitude: baseRadius * (0.19 + energy * 0.38), rot: 0, lineW: 2.6, glow: 15, hue: 0, light: 64, sat: 95 };
+      if (form === "thinking") return { amplitude: baseRadius * 0.14, rot: t * 0.6, lineW: 2, glow: 7, hue: 195, light: 58, sat: 90 };
+      if (form === "output") {
+        // 输出：大振幅 + 快速旋转 + 高频脉冲（炽热喷涌，与默认态强区分）
+        const throb = 1 + 0.22 * Math.sin(t * 8.0);
+        return { amplitude: baseRadius * (0.30 + energy * 0.5) * throb, rot: t * 2.4, lineW: 3.4, glow: 18, hue: 8, light: 62, sat: 96 };
+      }
+      // 默认/待命：小振幅 + 极慢漂移（平稳监听，冷紫，与输出态强区分）
+      return { amplitude: baseRadius * (0.14 + energy * 0.16), rot: t * 0.22, lineW: 2.4, glow: 10, hue: 278, light: 60, sat: 92 };
     }
     function ringRadius(form, j, t, baseRadius, amplitude) {
       if (form === "thinking") {
@@ -424,26 +469,27 @@ export function useVizEngine() {
       return baseRadius + (ringSamples[j] - 0.5) * amplitude * 2;
     }
 
-    function drawRingWave(formFrom, formTo, e, dt, centerX, centerY, energy) {
+    function drawRingWave(formFrom, formTo, e, dt, centerX, centerY, energy, ringArc, ringBloom) {
       const t = fxState.t;
       const baseRadius = Math.min(viewWidth, viewHeight) * 0.16;
+      const ringScale = (1 + formFlash * 0.06) * ringBloom;   // 切换爆闪放大 × 入场绽放（自圆心 0→1）
 
       const sf = ringStyle(formFrom, t, energy, baseRadius);
       const st = ringStyle(formTo, t, energy, baseRadius);
       const amplitude = sf.amplitude + (st.amplitude - sf.amplitude) * e;
       const rot = sf.rot + (st.rot - sf.rot) * e;
       const lineW = sf.lineW + (st.lineW - sf.lineW) * e;
-      const glow = sf.glow + (st.glow - sf.glow) * e;
+      const glow = sf.glow + (st.glow - sf.glow) * e + formFlash * 16;
       const ringLight = sf.light + (st.light - sf.light) * e;
       const sat = sf.sat + (st.sat - sf.sat) * e;
 
-      // 光晕底
+      // 光晕底（随绽放从圆心展开）
       const disc = ctx.createRadialGradient(centerX, centerY, baseRadius * 0.2, centerX, centerY, baseRadius * 1.3);
       disc.addColorStop(0, "rgba(177,75,255,0.06)");
       disc.addColorStop(1, "rgba(0,240,255,0)");
       ctx.fillStyle = disc;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, baseRadius * 1.3, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, baseRadius * 1.3 * ringBloom, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.save();
@@ -451,15 +497,18 @@ export function useVizEngine() {
       ctx.shadowBlur = glow;
       ctx.lineWidth = lineW;
       ctx.lineCap = "round";
-      for (let j = 0; j < CONFIG.ringSegments; j++) {
+      // 入场：仅绘制首 ringArc 比例的弧段 → 波形自顶部顺时针“描边成形”
+      const ringCount = Math.ceil(ringArc * CONFIG.ringSegments);
+      for (let j = 0; j < ringCount; j++) {
         const a0 = (j / CONFIG.ringSegments) * Math.PI * 2 - Math.PI / 2 + rot;
         const a1 = ((j + 1) / CONFIG.ringSegments) * Math.PI * 2 - Math.PI / 2 + rot;
-        const r0 = ringRadius(formFrom, j, t, baseRadius, amplitude) * (1 - e)
-          + ringRadius(formTo, j, t, baseRadius, amplitude) * e;
-        const r1 = ringRadius(formFrom, j + 1, t, baseRadius, amplitude) * (1 - e)
-          + ringRadius(formTo, j + 1, t, baseRadius, amplitude) * e;
-        const hFrom = (formFrom === "thinking") ? sf.hue : neonHueAt(j / CONFIG.ringSegments);
-        const hTo = (formTo === "thinking") ? st.hue : neonHueAt(j / CONFIG.ringSegments);
+        const r0 = (ringRadius(formFrom, j, t, baseRadius, amplitude) * (1 - e)
+          + ringRadius(formTo, j, t, baseRadius, amplitude) * e) * ringScale;
+        const r1 = (ringRadius(formFrom, j + 1, t, baseRadius, amplitude) * (1 - e)
+          + ringRadius(formTo, j + 1, t, baseRadius, amplitude) * e) * ringScale;
+        // 环按形态纯色（思考青 / 默认紫 / 输出红），避免默认与输出同为彩虹而难以分辨
+        const hFrom = sf.hue;
+        const hTo = st.hue;
         const hueSeg = hFrom + (hTo - hFrom) * e;
         ctx.strokeStyle = `hsl(${hueSeg}, ${sat}%, ${ringLight}%)`;
         ctx.beginPath();
@@ -474,7 +523,7 @@ export function useVizEngine() {
       if (pThink > 0.01) {
         const ang = (t * 2.4) % (Math.PI * 2);
         const sweep = Math.PI * 0.4;
-        const r = baseRadius * 1.5;
+        const r = baseRadius * 1.5 * ringScale;
         ctx.save();
         ctx.lineCap = "round"; ctx.lineWidth = 3;
         ctx.shadowColor = "rgba(0,240,255,0.8)"; ctx.shadowBlur = 12;
@@ -493,7 +542,7 @@ export function useVizEngine() {
       if (pOut > 0.01) {
         for (let k = 0; k < 2; k++) {
           const phase = (t * 0.9 + k * 0.5) % 1;
-          const r = baseRadius * 1.2 + phase * baseRadius * 2.2;
+          const r = (baseRadius * 1.2 + phase * baseRadius * 2.2) * ringScale;
           const alpha = (1 - phase) * 0.4 * pOut;
           ctx.save();
           ctx.lineWidth = 2;
@@ -505,7 +554,7 @@ export function useVizEngine() {
 
       // 中心能量核（输出形态更亮）
       const pOutCore = (formTo === "output") ? e : (formFrom === "output" ? 1 - e : 0);
-      const pulse = baseRadius * (0.06 + energy * 0.08) * (1 + 0.4 * pOutCore);
+      const pulse = baseRadius * (0.06 + energy * 0.08) * (1 + 0.4 * pOutCore + formFlash * 0.6) * ringBloom;
       const core = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulse);
       core.addColorStop(0, "rgba(255,255,255,0.95)");
       core.addColorStop(0.5, "rgba(0,240,255,0.8)");
@@ -541,14 +590,37 @@ export function useVizEngine() {
 
     // ---------- 主渲染 ----------
     function render(dt) {
+      // 入场进度 bootT：booted 后 0→1，驱动各图层“从无到有”的分层生成
+      let bootT = 0;
+      if (document.body.classList.contains("booted")) {
+        if (!bootRampStart) bootRampStart = performance.now();
+        bootT = clamp01((performance.now() - bootRampStart) / BOOT_REVEAL);
+      }
+
       fxState.t += dt;
       if (formMix < 1) {
         formTimer += dt;
         formMix = Math.min(1, formTimer / FORM_DUR);
       }
+      formFlash = Math.max(0, formFlash - dt * 2.2);   // 爆闪约 0.45s 衰减
+
+      // 分层入场曲线（bootT 0→1 内错落展开）：
+      //   数据雨 / 黑客流 —— 纯淡入（氛围层）
+      //   fx-bars         —— 自基线逐根生长（左→右扫描 + 回弹），见 drawSpectrumBars
+      //   fx-ring         —— 自圆心绽放(半径) + 顺时针描边成形(弧长)，见 drawRingWave
+      //   故障层          —— 最后浮现
+      const rainA = easeOutCubic(seg(bootT, 0.00, 0.45));
+      const hackerA = easeOutCubic(seg(bootT, 0.06, 0.45));
+      const barsA = easeOutCubic(seg(bootT, 0.16, 0.55));
+      const ringA = easeOutCubic(seg(bootT, 0.30, 0.62));
+      const ringArc = easeInOutCubic(seg(bootT, 0.30, 0.66));   // 0→1：环波形顺时针描出
+      const ringBloom = easeOutBack(seg(bootT, 0.30, 0.62));    // 0→1：自圆心绽放（带过冲）
+      const glitchA = easeOutCubic(seg(bootT, 0.52, 0.40));
 
       ctx.clearRect(0, 0, viewWidth, viewHeight);
+      ctx.globalAlpha = rainA;
       drawDataRain(dt);
+      ctx.globalAlpha = hackerA;
       drawHackerStream(dt);        // 左侧黑客数据流（背景氛围层）
 
       const centerX = viewWidth / 2;
@@ -556,12 +628,16 @@ export function useVizEngine() {
       const energy = spectrumState.energy;
 
       // 形态过渡：不再淡入淡出，而是“形变”——逐柱 / 逐段插值几何与样式参数，
-      // 让两种形态之间物理变形（easeInOutCubic 缓动，过渡自然不突兀）
-      const e = easeInOutCubic(formMix);
-      drawSpectrumBars(vizFormFrom, vizForm, e, dt);
-      drawRingWave(vizFormFrom, vizForm, e, dt, centerX, centerY, energy);
+      // 带过冲的回弹缓动（easeOutBack）+ 切换爆闪，让状态变更清晰可感
+      const e = easeOutBack(formMix);
+      ctx.globalAlpha = barsA;
+      drawSpectrumBars(vizFormFrom, vizForm, e, dt, bootT);
+      ctx.globalAlpha = ringA;
+      drawRingWave(vizFormFrom, vizForm, e, dt, centerX, centerY, energy, ringArc, ringBloom);
 
+      ctx.globalAlpha = glitchA;
       renderGlitch(dt);
+      ctx.globalAlpha = 1;
     }
 
     // ---------- 主循环 ----------
