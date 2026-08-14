@@ -48,3 +48,4 @@ pnpm-debug.log*
 *.old
 
 package-lock.json
+.workbuddy

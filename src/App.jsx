@@ -14,6 +14,7 @@ import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
 import { Hud, ChatToggle } from "./components/hud/Hud.jsx";
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
+import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 
 export default function App() {
   // 启动可视化引擎（canvas 渲染 / 形态切换 / 黑客流拖拽），挂载于根组件，仅初始化一次。
@@ -61,6 +62,15 @@ export default function App() {
 
       {/* 主对话窗口 */}
       <ChatPanel />
+
+      {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}
+      <div className="oil-dock">
+        <OilPricePanel
+          data={{ name: "上海 92# 汽油", unit: "¥", price: 7.93, prevClose: 7.38 }}
+          nextAdjust={new Date("2026-08-14T24:00:00")}
+          forecast={{ direction: "down", text: "预计小幅下调" }}
+        />
+      </div>
 
       {/* 调试覆盖层（组件 ID 标注 / 清单 / 复制） */}
       <DevOverlay />

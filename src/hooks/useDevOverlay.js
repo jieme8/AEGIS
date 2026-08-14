@@ -185,6 +185,8 @@ export function useDevOverlay() {
       }
       if (on) startCoordTimer(); else { stopCoordTimer(); clearHover(); }
       if (toast) toast.classList.remove("show");
+      // 广播模式切换，供拖拽等模块按 dev-mode 启用/停用
+      window.dispatchEvent(new CustomEvent("devmodechange", { detail: { on } }));
     }
     if (toggle) {
       toggle.addEventListener("click", () => setDevMode(!body.classList.contains("dev-mode")));
