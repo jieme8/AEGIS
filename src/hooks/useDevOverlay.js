@@ -57,27 +57,41 @@ export function useDevOverlay() {
       if (el.hasAttribute("data-dev-nolabel")) return;      // 背景全屏层不挂画布标签
       labeled.add(el);
       const id = el.getAttribute("data-dev-id");
-      const tag = document.createElement("span");
-      tag.className = "dev-label";
-      tag.dataset.copyId = id;
-      const idEl = document.createElement("span");
-      idEl.className = "dl-id";
-      idEl.textContent = id;
-      const coordEl = document.createElement("span");
-      coordEl.className = "dl-coord";
-      coordEl.textContent = "";
-      const sizeEl = document.createElement("span");
-      sizeEl.className = "dl-size";
-      sizeEl.textContent = "";
-      tag.appendChild(idEl);
-      tag.appendChild(coordEl);
-      tag.appendChild(sizeEl);
-      el.appendChild(tag);
-      // 动态补标的标签也要能点击复制
-      tag.addEventListener("click", (e) => {
-        e.stopPropagation();
-        copyText(tag.dataset.copyId || tag.textContent, tag);
-      });
+      // 复用组件自带的 dev-label（如 FloatingPanel 的 JSX 标签），避免重复挂标
+      let tag = el.querySelector(":scope > .dev-label");
+      const created = !tag;
+      if (created) {
+        tag = document.createElement("span");
+        tag.className = "dev-label";
+        tag.dataset.copyId = id;
+      }
+      // 确保各分段齐全：z-index（层叠层级）→ ID → 坐标 → 尺寸
+      let idEl = tag.querySelector(".dl-id");
+      if (!idEl) { idEl = document.createElement("span"); idEl.className = "dl-id"; tag.appendChild(idEl); }
+      if (!idEl.textContent) idEl.textContent = id;
+
+      // z-index 芯片：拼接在 ID 文本之前，直观展示层叠顺序
+      // 注意：值写入 data-z（而非 textContent），由 CSS ::after 渲染——
+      // 这样面板 re-render 时 React 不会把坐标/尺寸文本冲掉。
+      let zEl = tag.querySelector(".dl-z");
+      if (!zEl) { zEl = document.createElement("span"); zEl.className = "dl-z"; tag.insertBefore(zEl, idEl); }
+      const z0 = getComputedStyle(el).zIndex;
+      zEl.dataset.z = "z:" + (z0 === "auto" ? "auto" : z0);
+
+      let coordEl = tag.querySelector(".dl-coord");
+      if (!coordEl) { coordEl = document.createElement("span"); coordEl.className = "dl-coord"; tag.appendChild(coordEl); }
+      let sizeEl = tag.querySelector(".dl-size");
+      if (!sizeEl) { sizeEl = document.createElement("span"); sizeEl.className = "dl-size"; tag.appendChild(sizeEl); }
+
+      if (created) el.appendChild(tag);
+      // 动态补标 / 复用标签也要能点击复制
+      if (!tag._wired) {
+        tag._wired = true;
+        tag.addEventListener("click", (e) => {
+          e.stopPropagation();
+          copyText(tag.dataset.copyId || tag.textContent, tag);
+        });
+      }
     }
 
     // 初始全量打标
@@ -99,32 +113,53 @@ export function useDevOverlay() {
     });
     mo.observe(document.body, { childList: true, subtree: true });
 
-    // 编辑模式下，为【所有】带标签的组件实时显示坐标（X/Y）与尺寸（W×H）
+    // 编辑模式下，为【所有】带标签的组件实时显示坐标（X/Y）与尺寸（W×H）。
+    // 值写入 data-* 属性（CSS ::after 渲染），避免被 React 的 re-render 冲掉。
     let coordTimer = null;
+    // 兜底挂标：React 组件 re-render 时可能把「overlay 追加的 .dev-label」当作
+    // 多余子节点移除，导致 ID/坐标整段消失。这里周期性发现缺失就重建。
+    function ensureLabels() {
+      for (const el of labeled) {
+        if (!el.isConnected || !el.querySelector(":scope > .dev-label")) labeled.delete(el);
+      }
+      document.querySelectorAll("[data-dev-id]").forEach((el) => {
+        if (!el.isConnected) return;
+        if (labeled.has(el)) return;
+        attachLabel(el);
+      });
+    }
     function updateCoordLabels() {
       document.querySelectorAll(".dev-label").forEach((tag) => {
         const coordEl = tag.querySelector(".dl-coord");
         const sizeEl = tag.querySelector(".dl-size");
+        const zEl = tag.querySelector(".dl-z");
         if (!coordEl || !sizeEl) return;
         const host = tag.parentElement;
         if (!host) return;
         const r = host.getBoundingClientRect();
         const x = Math.round(r.left);
         const y = Math.round(r.top);
-        coordEl.textContent = `X:${x} Y:${y}`;
-        sizeEl.textContent = `${Math.round(r.width)}×${Math.round(r.height)}`;
+        coordEl.dataset.coord = `X:${x} Y:${y}`;
+        sizeEl.dataset.size = `${Math.round(r.width)}×${Math.round(r.height)}`;
+        // 层叠层级（z-index）可能随面板置顶而改变，实时同步
+        if (zEl) {
+          const z = getComputedStyle(host).zIndex;
+          zEl.dataset.z = "z:" + (z === "auto" ? "auto" : z);
+        }
       });
     }
     function startCoordTimer() {
       if (coordTimer) return;
+      ensureLabels();
       updateCoordLabels();
-      coordTimer = setInterval(updateCoordLabels, 120);
+      coordTimer = setInterval(() => { ensureLabels(); updateCoordLabels(); }, 120);
     }
     function stopCoordTimer() {
       if (coordTimer) { clearInterval(coordTimer); coordTimer = null; }
       // 关闭编辑模式时清空坐标与尺寸，避免残留
-      document.querySelectorAll(".dev-label .dl-coord").forEach((c) => { c.textContent = ""; });
-      document.querySelectorAll(".dev-label .dl-size").forEach((s) => { s.textContent = ""; });
+      document.querySelectorAll(".dev-label .dl-coord").forEach((c) => { c.dataset.coord = ""; });
+      document.querySelectorAll(".dev-label .dl-size").forEach((s) => { s.dataset.size = ""; });
+      document.querySelectorAll(".dev-label .dl-z").forEach((z) => { z.dataset.z = ""; });
     }
 
     // 悬停 / 选中：亮色描边 + 底部读数告知当前项

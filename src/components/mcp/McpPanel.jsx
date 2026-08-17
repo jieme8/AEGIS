@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MCPClient } from "../../lib/mcpClient.js";
+import { isAutoMemoryEnabled, setAutoMemoryEnabled } from "../../lib/autoMemory.js";
 
 /*
  * MCP 服务器列表浮层（独立浮层，Portal 挂到 document.body，不受任何父容器限制）
@@ -31,11 +32,34 @@ function LoadingDots({ label }) {
   );
 }
 
-function McpRow({ s }) {
+function McpRow({ s, client, onOpenMemory }) {
   const meta = STATUS_META[s.status] || STATUS_META.connecting;
   const usable = s.status === "connected";
+  const isMemory = s.name === "memory" && usable && client;
+  const onCardKey = (e) => {
+    if (!isMemory) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onOpenMemory && onOpenMemory();
+    }
+  };
   return (
-    <div className="mcp-row" data-dev-id={`mcp-server-${s.name}`}>
+    <div
+      className={"mcp-row" + (isMemory ? " mcp-row-clickable" : "")}
+      data-dev-id={`mcp-server-${s.name}`}
+      {...(isMemory
+        ? {
+            role: "button",
+            tabIndex: 0,
+            title: "点击查看 / 管理已记录的记忆",
+            onClick: (e) => {
+              e.stopPropagation();
+              onOpenMemory && onOpenMemory();
+            },
+            onKeyDown: onCardKey,
+          }
+        : {})}
+    >
       <div className="mcp-row-head">
         <span className="mcp-name">{s.name}</span>
         <span className={`mcp-badge ${meta.cls}`}>
@@ -58,7 +82,266 @@ function McpRow({ s }) {
           ))}
         </div>
       )}
+      {isMemory && (
+        <div className="mcp-row-hint">👆 点击卡片查看 / 管理记忆</div>
+      )}
     </div>
+  );
+}
+
+/*
+ * memory 服务器记忆查看/管理弹层：点击 mcp-panel 里的 memory 卡片即弹出。
+ * 展示服务器里记录的全部记忆（key + value），每条可复制 / 删除；底部「新增记忆」
+ * 表单可当场写入。数据来自 list_memories / save_memory / delete_memory 三个工具，
+ * 优先用 list_memories 的 structuredContent.entries，旧版 Relay 则从文本回退解析。
+ */
+function parseMemoryText(text) {
+  if (!text || text.includes("暂无记忆")) return [];
+  const out = [];
+  for (const line of String(text).split("\n")) {
+    const m = line.match(/^•\s*([^=]+?)\s*=\s*(.*)$/);
+    if (m) out.push({ key: m[1], value: m[2] });
+  }
+  return out;
+}
+
+function MemoryModal({ open, onClose, client }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const [entries, setEntries] = useState([]);
+  const [copiedKey, setCopiedKey] = useState(null);
+  // 新增记忆表单
+  const [newKey, setNewKey] = useState("");
+  const [newVal, setNewVal] = useState("");
+  const [saving, setSaving] = useState(false);
+  // 自动记忆捕获：开关 + 最近一次捕获结果（供状态行展示）
+  const [autoOn, setAutoOn] = useState(isAutoMemoryEnabled());
+  const [lastCap, setLastCap] = useState(null);
+
+  // 监听捕获完成事件：刷新列表 + 更新「上次自动保存」状态行
+  useEffect(() => {
+    const onCap = (e) => {
+      const d = (e && e.detail) || {};
+      setLastCap({ saved: d.saved || 0, ts: d.ts || Date.now() });
+      if (open) load();
+    };
+    const onCfg = (e) => setAutoOn(!!(e && e.detail && e.detail.enabled));
+    window.addEventListener("jarvis:automem", onCap);
+    window.addEventListener("jarvis:automem-config", onCfg);
+    return () => {
+      window.removeEventListener("jarvis:automem", onCap);
+      window.removeEventListener("jarvis:automem-config", onCfg);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const toggleAuto = () => {
+    const next = !autoOn;
+    setAutoOn(next);
+    setAutoMemoryEnabled(next);
+  };
+
+  const load = async () => {
+    setLoading(true);
+    setErr(null);
+    try {
+      const res = await client.callTool("list_memories", {});
+      if (res.isError) {
+        setErr(res.content || "读取失败");
+        setEntries([]);
+        return;
+      }
+      const ents =
+        (res.raw && res.raw.structuredContent && res.raw.structuredContent.entries) ||
+        parseMemoryText(res.content);
+      setEntries(ents || []);
+    } catch (e) {
+      setErr(e && e.message ? e.message : "读取失败");
+      setEntries([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 打开时拉取一次
+  useEffect(() => {
+    if (open) load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // ESC 关闭
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  const copy = async (key, value) => {
+    try {
+      await navigator.clipboard.writeText(`${key} = ${value}`);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey((k) => (k === key ? null : k)), 1200);
+    } catch (_) {
+      /* 剪贴板不可用时静默忽略 */
+    }
+  };
+
+  const remove = async (key) => {
+    try {
+      await client.callTool("delete_memory", { key });
+    } catch (_) {
+      /* 失败也刷新一次看最新状态 */
+    }
+    load();
+  };
+
+  const save = async () => {
+    const k = newKey.trim();
+    const v = newVal;
+    if (!k) return;
+    setSaving(true);
+    try {
+      const res = await client.callTool("save_memory", { key: k, value: v });
+      if (res.isError) {
+        setErr(res.content || "保存失败");
+      } else {
+        setNewKey("");
+        setNewVal("");
+        load();
+      }
+    } catch (e) {
+      setErr(e && e.message ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
+
+  return createPortal(
+    <div className="mcp-mem-backdrop" onMouseDown={onClose}>
+      <div
+        className="mcp-mem-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="memory 记忆管理"
+        data-dev-id="mcp-memory-modal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="mcp-mem-modal-head">
+          <span className="mcp-mem-modal-title">🧠 memory · 已记录的记忆</span>
+          <button
+            type="button"
+            className="mcp-mem-modal-close"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mcp-mem-modal-body">
+          <div className="mcp-mem-actions">
+            <span className="mcp-mem-count">
+              {entries.length} 条 · 持久化于 ~/.jarvis-mcp/memory.json
+            </span>
+            <button
+              type="button"
+              className="mcp-mem-refresh"
+              onClick={load}
+              disabled={loading}
+              data-dev-id="mcp-memory-refresh"
+            >
+              ↻ 刷新
+            </button>
+          </div>
+
+          <div className="mcp-mem-auto">
+            <label className="mcp-mem-auto-row">
+              <input
+                type="checkbox"
+                checked={autoOn}
+                onChange={toggleAuto}
+                data-dev-id="mcp-memory-auto-toggle"
+              />
+              <span>自动捕获对话中的记忆（每轮对话后提炼用户事实写入）</span>
+            </label>
+            <div className="mcp-mem-lastcap">
+              {lastCap
+                ? `上次自动保存：${lastCap.saved} 条 · ${new Date(lastCap.ts).toLocaleTimeString("zh-CN")}`
+                : "尚无自动捕获记录（发一条消息试试）"}
+            </div>
+          </div>
+
+          {loading && <div className="mcp-mem-loading">读取中…</div>}
+          {!loading && err && <div className="mcp-mem-empty err">⚠ {err}</div>}
+          {!loading && !err && entries.length === 0 && (
+            <div className="mcp-mem-empty">
+              （暂无记忆）在下方「＋ 新增记忆」填入 key 与内容即可写入；也可让 J.A.R.V.I.S 在对话里调用 save_memory 自动记。
+            </div>
+          )}
+          {!loading && !err && entries.length > 0 && (
+            <ul className="mcp-mem-list">
+              {entries.map((e) => (
+                <li className="mcp-mem-item" key={e.key}>
+                  <div className="mcp-mem-key">{e.key}</div>
+                  <div className="mcp-mem-val">{e.value}</div>
+                  <div className="mcp-mem-item-actions">
+                    <button
+                      type="button"
+                      className="mcp-mem-copy"
+                      onClick={() => copy(e.key, e.value)}
+                      data-dev-id={`mcp-memory-copy-${e.key}`}
+                    >
+                      {copiedKey === e.key ? "✓" : "复制"}
+                    </button>
+                    <button
+                      type="button"
+                      className="mcp-mem-del"
+                      onClick={() => remove(e.key)}
+                      data-dev-id={`mcp-memory-del-${e.key}`}
+                    >
+                      删除
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="mcp-mem-add">
+            <div className="mcp-mem-add-title">＋ 新增记忆</div>
+            <input
+              className="mcp-mem-add-key"
+              type="text"
+              placeholder="key（如 project_name / 用户偏好）"
+              value={newKey}
+              onChange={(e) => setNewKey(e.target.value)}
+              data-dev-id="mcp-memory-add-key"
+            />
+            <textarea
+              className="mcp-mem-add-val"
+              placeholder="value（要记下来的内容，可多行）"
+              value={newVal}
+              onChange={(e) => setNewVal(e.target.value)}
+              rows={3}
+              data-dev-id="mcp-memory-add-val"
+            />
+            <button
+              type="button"
+              className="mcp-mem-add-save"
+              onClick={save}
+              disabled={saving || !newKey.trim()}
+              data-dev-id="mcp-memory-add-save"
+            >
+              {saving ? "保存中…" : "保存"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
@@ -70,6 +353,7 @@ export function McpPanel({ open, onClose }) {
   const [error, setError] = useState(null);
   const clientRef = useRef(null);
   if (!clientRef.current) clientRef.current = new MCPClient();
+  const [memOpen, setMemOpen] = useState(false);
 
   const fetchStatus = async () => {
     try {
@@ -164,9 +448,19 @@ export function McpPanel({ open, onClose }) {
           <div className="mcp-empty">（未配置任何 MCP 服务器）</div>
         )}
         {!loading && !error && servers.map((s) => (
-          <McpRow s={s} key={s.name} />
+          <McpRow
+            s={s}
+            key={s.name}
+            client={clientRef.current}
+            onOpenMemory={s.name === "memory" ? () => setMemOpen(true) : undefined}
+          />
         ))}
       </div>
+      <MemoryModal
+        open={memOpen}
+        onClose={() => setMemOpen(false)}
+        client={clientRef.current}
+      />
     </div>,
     document.body
   );

@@ -1,62 +1,142 @@
 /*
- * 模型配置 · LongCat（OpenAI 兼容格式）
- * 文档：https://longcat.chat/platform/docs/zh/
+ * 供应商配置 · 多模型 / 多 API 地址切换
+ * 支持在同一界面切换不同供应商（如 LongCat、阿里千问 CodePlan），
+ * 每个供应商自带 endpoint / apiKey / model / 过期日，切换即用。
  *
- * 开发环境（import.meta.env.DEV）：
- *   浏览器经 Vite 同源代理 /api/longcat 访问（见 vite.config.js），
- *   密钥由代理在服务端注入 —— 浏览器既不暴露密钥，也不存在跨域，
- *   可彻底解决「内置预览面板 Origin 与 CORS 不匹配导致 fetch 被拦、
- *   静默回退本地模拟」的问题。
+ * 接入方式（.env，均需 VITE_ 前缀才能进浏览器 bundle）：
+ *   1) 便捷模式（推荐）：
+ *      VITE_LONGCAT_API_KEYS=key1,key2@2026-09-01   # LongCat 多 key（可 @过期日）
+ *      VITE_QWEN_API_KEY=sk-ws-xxx                  # 阿里千问 CodePlan
+ *      VITE_QWEN_MODEL=qwen-coder-plus              # 可选，默认 qwen-coder-plus
+ *      VITE_QWEN_ENDPOINT=https://.../compatible-mode/v1  # 可选，默认 dashscope
+ *      VITE_QWEN_EXPIRES=2026-12-31                 # 可选过期日
+ *   2) 高级模式（完全自定义 endpoint / model）：
+ *      VITE_PROVIDERS=[{"label":"...","endpoint":"https://.../chat/completions",
+ *                       "key":"...","model":"...","expiresAt":"2026-09-01"}]
+ *      （一旦设置 VITE_PROVIDERS，便捷模式的自动配置被忽略，以 JSON 为准）
  *
- * 生产环境（import.meta.env.DEV === false）：
- *   浏览器直连真实端点；需确保该端点允许你的部署域 CORS，
- *   否则应自建后端代理转发（避免密钥暴露到前端 bundle）。
+ * dev / prod：
+ *   - LongCat 走同源代理 /api/longcat（密钥由代理注入、避免 CORS）。
+ *   - 阿里默认走 https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions；
+ *     可通过 VITE_QWEN_ENDPOINT 覆盖为其它 OpenAI 兼容端点（如 ModelScope token-plan）。
+ *     dev 下走同源代理 /api/qwen 避免 CORS；prod 浏览器直连。
  */
-// 从 .env 读取（Vite 注入前端），不再硬编码密钥
-// 变量名必须是 VITE_ 前缀才能暴露到浏览器 bundle
+
 const LONGCHAT_API_KEY =
   (typeof import.meta !== "undefined" &&
     import.meta.env &&
     import.meta.env.VITE_LONGCAT_API_KEY) ||
   "";
 
-// 是否为开发环境（Vite 注入）。非 ESM 环境（如 Node test）默认按生产处理。
 const IS_DEV =
   typeof import.meta !== "undefined" && import.meta.env && import.meta.env.DEV;
 
+export const LONGCAT_EP = IS_DEV
+  ? "/api/longcat"
+  : "https://api.longcat.chat/openai/v1/chat/completions";
+function envVal(name) {
+  return typeof import.meta !== "undefined" && import.meta.env
+    ? import.meta.env[name]
+    : undefined;
+}
+function envList(raw) {
+  return String(raw || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+// 阿里 Qwen 端点可覆盖：.env 给 OpenAI 兼容 base URL（不含 /chat/completions），
+// 代码自动补全为完整 completions 地址；dev 下仍走 /api/qwen 代理。
+const QWEN_BASE =
+  envVal("VITE_QWEN_ENDPOINT") ||
+  "https://dashscope.aliyuncs.com/compatible-mode/v1";
+const QWEN_EP = QWEN_BASE.replace(/\/+$/, "") + "/chat/completions";
+function parseExpiry(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  const t = new Date(s.length <= 10 ? s + "T23:59:59" : s).getTime();
+  return isNaN(t) ? null : t;
+}
+function normalizeProfile(p, i) {
+  return {
+    id: p.id || "p" + i,
+    label: p.label || "PROVIDER " + (i + 1),
+    endpoint: p.endpoint || LONGCAT_EP,
+    apiKey: (p.key || "").trim(),
+    model: p.model || "LongCat-2.0",
+    expiresAt: parseExpiry(p.expiresAt),
+    supportsTools: p.supportsTools !== undefined ? !!p.supportsTools : true,
+  };
+}
+
+function parseProviders() {
+  // 高级：完整 JSON（endpoint / model / key / expiresAt 全自定义）
+  const rawJson = envVal("VITE_PROVIDERS");
+  if (rawJson) {
+    try {
+      const arr = JSON.parse(rawJson);
+      if (Array.isArray(arr) && arr.length) return arr.map(normalizeProfile);
+    } catch (e) {
+      console.warn("[modelConfig] VITE_PROVIDERS 解析失败，回退便捷模式：", e);
+    }
+  }
+  // 便捷：LongCat（多 key / 单 key）+ 可选阿里 CodePlan
+  const profiles = [];
+  const lcKeys = envList(envVal("VITE_LONGCAT_API_KEYS"));
+  if (lcKeys.length) {
+    lcKeys.forEach((part) => {
+      const [k, exp] = part.split("@");
+      profiles.push(
+        normalizeProfile(
+          {
+            label: envVal("VITE_LONGCAT_LABEL") || ("LongCat-" + (profiles.length + 1)),
+            endpoint: LONGCAT_EP,
+            key: (k || "").trim(),
+            model: "LongCat-2.0",
+            expiresAt: exp ? exp.trim() : null,
+          },
+          profiles.length
+        )
+      );
+    });
+  } else if (LONGCHAT_API_KEY) {
+    profiles.push(
+      normalizeProfile(
+        { label: "LongCat-1", endpoint: LONGCAT_EP, key: LONGCHAT_API_KEY, model: "LongCat-2.0" },
+        profiles.length
+      )
+    );
+  }
+  const qwenKey = envVal("VITE_QWEN_API_KEY");
+  if (qwenKey) {
+    profiles.push(
+      normalizeProfile(
+        {
+          label: envVal("VITE_QWEN_LABEL") || "阿里TokenPlan",
+          endpoint: IS_DEV ? "/api/qwen" : QWEN_EP,
+          key: qwenKey.trim(),
+          model: envVal("VITE_QWEN_MODEL") || "qwen-coder-plus",
+          expiresAt: envVal("VITE_QWEN_EXPIRES") || null,
+        },
+        profiles.length
+      )
+    );
+  }
+  return profiles;
+}
+
+export const PROFILES = parseProviders();
+
 export const MODEL_CONFIG = {
-  provider: "longcat",
-  // 开发：同源代理（无跨域、密钥不下发）；生产：直连真实端点
-  endpoint: IS_DEV
-    ? "/api/longcat"
-    : "https://api.longcat.chat/openai/v1/chat/completions",
-  apiKey: LONGCHAT_API_KEY,
-  // 是否由浏览器携带 Authorization：dev 经代理、由代理注入，浏览器不发送
-  sendAuthFromBrowser: !IS_DEV,
-  model: "LongCat-2.0",
-  // —— MCP 工具调用（Agent 能力，第一期 fetch，详见 MCP-INTEGRATION-PLAN.md）——
-  // D1 确认 LongCat-2.0 支持 OpenAI 兼容 tool_calls，无需更换模型。
+  provider: "multi",
+  // —— MCP 工具调用（Agent 能力，详见 MCP-INTEGRATION-PLAN.md）——
   supportsTools: true,
-  // 是否启用 MCP 工具调用（经同源 /api/mcp 代理到 Node 侧 MCP Relay）
   toolsEnabled: true,
-  // 浏览器侧 MCP 门面请求的同源前缀（由 vite 代理转发到 Relay，见 vite.config.js）
   mcpRelay: "/api/mcp",
-  // tool-loop 最大迭代次数（防失控）
   maxToolIterations: 5,
-  // LongCat-2.0 为推理模型：推理过程(reasoning_content)与最终回答(content)
-  // 共用 max_tokens 预算。预算过小会导致推理吃光额度、正文为空。
-  // 设为 2000 以保证推理后仍有充足额度输出正文（流式下正文才会真正显示）。
   maxTokens: 2000,
   temperature: 0.7,
-  // 请求超时（毫秒）
   timeoutMs: 30000,
-  // 失败时回退到本地模拟回复（仅作兜底，正常不应触发；失败时会在控制台报错）
   fallbackToLocal: true,
 };
-
-/*
- * 生产环境建议（密钥不进前端 bundle）：
- *   1) 在项目根目录创建 .env，写入  VITE_LONGCAT_API_KEY=ak_xxx
- *   2) 将上方 LONGCHAT_API_KEY 改为  import.meta.env.VITE_LONGCAT_API_KEY
- *   3) 自建一个服务端代理（与 dev 代理同理）转发到 LongCat
- */

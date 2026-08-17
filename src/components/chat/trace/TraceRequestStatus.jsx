@@ -1,6 +1,5 @@
 import { STATUS_META, fmtTime, LoadingDots } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
-import { MODEL_CONFIG } from "../../../config/modelConfig.js";
 
 /**
  * 01 · 请求状态（独立桌面浮层）
@@ -28,16 +27,18 @@ export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
             <div className="k">状态</div>
             <div className={`v ${meta.cls}`}>{meta.label}</div>
             <div className="k">模型</div>
-            <div className="v mag">{t.model || MODEL_CONFIG.model}</div>
+            <div className="v mag">{t.model || "—"}</div>
             <div className="k">模式</div>
             <div className="v">{t.mode === "local"
               ? "本地模拟（接口失败回退）"
               : t.mode === "longcat-no-mcp"
-                ? "真实大模型 · LongCat（MCP 不可用）"
-                : "真实大模型 · LongCat"}
+                ? "真实大模型（MCP 不可用）"
+                : (t.key ? "真实大模型 · " + t.key.label : "真实大模型")}
             </div>
             <div className="k">发送时间</div>
             <div className="v">{fmtTime(t.sentAt)}</div>
+            <div className="k">当前密钥</div>
+            <div className="v mag">{t.key ? t.key.label : "—"}</div>
           </div>
           {streaming && (
             <LoadingDots label={t.status === "sending" ? "已发送，等待模型首个 token…" : "正在接收流式输出…"} />

@@ -97,10 +97,15 @@ export function FloatingPanel({
         <button className="float-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
       </div>
       <div className="float-body">{children}</div>
-      {/* 组件 ID 标签（dev 模式显示，点击复制） */}
+      {/* 组件 ID 标签（dev 模式显示，点击复制）。
+          四个分段（z-index / ID / 坐标 / 尺寸）全部由 JSX 持有，
+          内容交由 useDevOverlay 通过 data-* 属性注入，避免面板 re-render
+          时 React 把坐标/尺寸文本冲掉（改用 ::after 读取属性渲染）。 */}
       <span className="dev-label" data-copy-id={devId} onClick={() => copyId(devId)}>
+        <span className="dl-z" />
         <span className="dl-id">{devId}</span>
         <span className="dl-coord" />
+        <span className="dl-size" />
       </span>
     </div>,
     document.body

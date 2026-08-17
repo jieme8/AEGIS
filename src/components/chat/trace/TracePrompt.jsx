@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { CopyButton } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
@@ -8,6 +9,13 @@ import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 export function TracePrompt({ trace, open, onClose, index = 0 }) {
   const t = trace || {};
   const prompt = t.prompt || {};
+  const msgRef = useRef(null);
+
+  // 实际发送给模型的 Messages 随对话轮次增长，滚动条贴底始终看到最新一轮（与 trace-reasoning 一致）
+  useEffect(() => {
+    const el = msgRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [prompt.messages]);
 
   return (
     <FloatingPanel
@@ -32,7 +40,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
             完整 Messages（实际发送给模型的请求体）
             <CopyButton text={JSON.stringify(prompt.messages || [], null, 2)} />
           </div>
-          <pre className="trace-code">{JSON.stringify(prompt.messages || [], null, 2)}</pre>
+          <pre className="trace-code" ref={msgRef}>{JSON.stringify(prompt.messages || [], null, 2)}</pre>
         </div>
       </details>
     </FloatingPanel>

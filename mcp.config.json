@@ -12,12 +12,12 @@
     },
     {
       "name": "memory",
-      "enabled": false,
+      "enabled": true,
       "transport": "stdio",
-      "command": "npx",
-      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "command": "node",
+      "args": ["server/mcp-memory.mjs"],
       "toolCallTimeoutMs": 20000,
-      "_note": "Phase 1.2 启用；该官方包在本 registry 可用（2026.7.4）。"
+      "_note": "Phase 1.2 已启用；自研跨会话记忆服务器（仅依赖已装 SDK，离线可跑）。官方包 @modelcontextprotocol/server-memory 在本沙箱无法安装（npm/npx 联网通道被挡 + Windows npx bin 解析坑），故自研等价实现。换回官方：command 改 npx、args 改 ['-y','@modelcontextprotocol/server-memory']。"
     },
     {
       "name": "search",

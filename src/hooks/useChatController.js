@@ -5,6 +5,15 @@ import { isDevMode, onDevModeChange } from "../lib/devMode.js";
 import { MCPClient } from "../lib/mcpClient.js";
 import { ToolCallAccumulator } from "../lib/toolCalls.js";
 import { runAgentLoop } from "../lib/agentLoop.js";
+import { providerManager } from "../lib/providerManager.js";
+import { runImagePipeline } from "../lib/imagePipeline.js";
+import { runAutoMemory } from "../lib/autoMemory.js";
+import {
+  parseCommand,
+  searchMovies,
+  renderMovieResults,
+  MOVIE_SEARCH_PREFIX,
+} from "../lib/movieSearch.js";
 
 /**
  * 主对话窗口控制器（集成于频谱可视化器）—— 页面核心交互区。
@@ -16,12 +25,21 @@ import { runAgentLoop } from "../lib/agentLoop.js";
  * 浮层在对话发起瞬间自动弹出（setTraceOpen(true)），无需按钮触发。
  */
 // 复制文本到剪贴板，并在按钮上给出「已复制」瞬时反馈（不依赖全局 toast）
+const COPY_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+const CHECK_ICON =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+  'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="20 6 9 17 4 12"/></svg>';
+
 function copyText(text, btn) {
   const done = () => {
     if (btn) {
-      btn.textContent = "已复制";
+      btn.innerHTML = CHECK_ICON;       // 图标切换为「勾」
       btn.classList.add("copied");
-      setTimeout(() => { btn.textContent = "复制"; btn.classList.remove("copied"); }, 1200);
+      setTimeout(() => { btn.innerHTML = COPY_ICON; btn.classList.remove("copied"); }, 1200);
     }
   };
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -42,18 +60,22 @@ function copyText(text, btn) {
   }
 }
 
-// 给消息气泡挂一个「复制」按钮（目前仅 AI 回复；如需用户消息也可放开）
-function attachCopyButton(wrap, bubble) {
+// 给气泡挂一个「复制」图标按钮（绝对定位在气泡内右上角，hover 浮现）
+// 注意：按钮挂在 bubble 内（而非外层 .chat-msg），这样它的定位锚点是气泡本身，
+// 与对话框严丝合缝对齐；且必须落在 .chat-msg 盒子内部，才能保证 :hover 命中、可点击。
+// label 用于 title / aria-label（AI 回复称“复制回复”，用户发送内容称“复制内容”）。
+function attachCopyButton(bubble, label = "复制回复") {
   const copyBtn = document.createElement("button");
   copyBtn.className = "chat-copy";
   copyBtn.type = "button";
-  copyBtn.textContent = "复制";
-  copyBtn.setAttribute("aria-label", "复制回复");
+  copyBtn.innerHTML = COPY_ICON;
+  copyBtn.title = label;
+  copyBtn.setAttribute("aria-label", label);
   copyBtn.addEventListener("click", (e) => {
     e.stopPropagation();
-    copyText(bubble.textContent, copyBtn);
+    copyText(bubble.textContent, copyBtn);   // bubble 内仅含文本节点 + 该按钮（按钮无文字），textContent 即正文
   });
-  wrap.appendChild(copyBtn);
+  bubble.appendChild(copyBtn);
 }
 
 export function useChatController() {
@@ -174,15 +196,18 @@ export function useChatController() {
       return null;
     }
     function defaultRect() {
-      // 默认绝对坐标：左上角 (1280, 16)，宽 510 高 700
-      return { x: 1280, y: 16, w: 510, h: 700 };
+      // 默认位置固定为 (1300, 80)；尺寸仍随视口收敛，避免极小窗口溢出。
+      const vw = window.innerWidth, vh = window.innerHeight;
+      const w = Math.min(510, Math.max(320, vw - 32));
+      const h = Math.min(700, Math.max(360, vh - 154));
+      return { x: 1300, y: 80, w, h };
     }
 
     // --- 拖拽（DragController）---
     let drag = null;
     function onDragStart(e) {
       if (!panel) return;
-      if (e.target.closest(".chat-close, .chat-clear, .chat-trace, .dev-label")) return;  // 关闭/清空/对话流按钮与 ID 标签不触发拖拽
+      if (e.target.closest(".chat-close, .chat-clear, .chat-trace, .chat-image, .dev-label")) return;  // 关闭/清空/对话流/配图按钮与 ID 标签不触发拖拽
       if (e.button !== undefined && e.button !== 0) return;   // 仅左键
       drag = { px: e.clientX, py: e.clientY, rect: getRect() };
       panel.classList.add("dragging");
@@ -306,8 +331,11 @@ export function useChatController() {
 
     function appendMessage(role, text, time) {
       const ts = time || Date.now();
+      // 归一化显示角色：历史持久化用的是 "assistant"，但气泡样式/复制按钮都按 "ai" 挂载；
+      // 不归一化会导致重载后的 AI 历史气泡既无 cyan 气泡样式、也无复制按钮（即“历史不能复制”的根因）。
+      const cls = role === "user" ? "user" : "ai";
       const wrap = document.createElement("div");
-      wrap.className = "chat-msg " + role;
+      wrap.className = "chat-msg " + cls;
 
       const who = document.createElement("div");
       who.className = "who";
@@ -315,14 +343,42 @@ export function useChatController() {
 
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.textContent = text;                 // textContent 防 XSS
+      const textNode = document.createElement("span");     // 独立文本节点：流式更新只改它，不会误删复制按钮
+      textNode.className = "bubble-text";
+      textNode.textContent = text;                         // textContent 防 XSS
+      bubble.appendChild(textNode);
 
       wrap.appendChild(who);
       wrap.appendChild(bubble);
-      if (role === "ai") attachCopyButton(wrap, bubble);   // 回复内容一键复制
+      // 一键复制：AI 回复与用户发送内容都支持（历史/新发一致）
+      attachCopyButton(bubble, cls === "user" ? "复制内容" : "复制回复");
       messagesEl.appendChild(wrap);
 
       state.history.push({ role, text, time: ts });
+      scrollBottom();
+    }
+
+    // 富结果消息：气泡内容由 renderMovieResults 经 escapeHtml 构造（安全），
+    // 历史持久化存纯文本（bubble.textContent），重载后回退为纯文本展示。
+    function appendRichMessage(role, html) {
+      const cls = role === "user" ? "user" : "ai";
+      const wrap = document.createElement("div");
+      wrap.className = "chat-msg " + cls;
+
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = (role === "user" ? "YOU · " : "AI · ") + fmtTime(Date.now());
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      bubble.innerHTML = html;
+      wrap.appendChild(who);
+      wrap.appendChild(bubble);
+      // 复制按钮抓的是 textContent（纯文本）；AI 结果与用户内容都支持
+      attachCopyButton(bubble, cls === "user" ? "复制内容" : "复制回复");
+      messagesEl.appendChild(wrap);
+
+      state.history.push({ role, text: bubble.textContent, time: Date.now() });
       scrollBottom();
     }
 
@@ -335,15 +391,17 @@ export function useChatController() {
       who.textContent = "AI · " + fmtTime(Date.now());
       const bubble = document.createElement("div");
       bubble.className = "bubble";
-      bubble.textContent = "";
+      const textNode = document.createElement("span");     // 同 appendMessage：流式增量只改文本节点，保住复制按钮
+      textNode.className = "bubble-text";
+      bubble.appendChild(textNode);
       wrap.appendChild(who);
       wrap.appendChild(bubble);
-      attachCopyButton(wrap, bubble);            // 流式回复同样支持复制
+      attachCopyButton(bubble);                  // 流式回复同样支持复制
       messagesEl.appendChild(wrap);
       scrollBottom();
       return {
-        set: (t) => { bubble.textContent = t; scrollBottom(); },
-        finalize: (t) => { bubble.textContent = t; wrap.classList.remove("chat-streaming"); scrollBottom(); },
+        set: (t) => { textNode.textContent = t; scrollBottom(); },
+        finalize: (t) => { textNode.textContent = t; wrap.classList.remove("chat-streaming"); scrollBottom(); },
       };
     }
 
@@ -385,16 +443,24 @@ export function useChatController() {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), MODEL_CONFIG.timeoutMs);
       try {
-        // 仅生产/直连路径由浏览器携带鉴权；dev 经同源代理，代理已注入密钥
-        const headers = { "Content-Type": "application/json" };
-        if (MODEL_CONFIG.sendAuthFromBrowser) {
-          headers["Authorization"] = "Bearer " + MODEL_CONFIG.apiKey;
+        // 整组供应商切换：选中供应商决定 endpoint / apiKey / model
+        const profile = providerManager.getActive();
+        if (!profile || !profile.apiKey) {
+          throw new Error(
+            "未配置可用的供应商密钥（请在 .env 设置 VITE_LONGCAT_API_KEYS 或 VITE_QWEN_API_KEY）"
+          );
         }
-        const res = await fetch(MODEL_CONFIG.endpoint, {
+        const endpoint = profile.endpoint;
+        const authKey = profile.apiKey;
+        const model = profile.model;
+
+        const headers = { "Content-Type": "application/json" };
+        if (authKey) headers["Authorization"] = "Bearer " + authKey;
+        const res = await fetch(endpoint, {
           method: "POST",
           headers,
           body: JSON.stringify({
-            model: MODEL_CONFIG.model,
+            model,
             messages,
             max_tokens: MODEL_CONFIG.maxTokens,
             temperature: MODEL_CONFIG.temperature,
@@ -446,6 +512,43 @@ export function useChatController() {
       input.disabled = b;
     }
 
+    // —— 影视搜索指令：解析 "@影视搜索 <名称>" → 分层检索 → 富结果渲染 ——
+    // 返回 true 表示已处理（含空名称提示），调用方应跳过普通对话；false 表示非本指令。
+    async function runMovieSearchCommand(raw) {
+      const parsed = parseCommand(raw);
+      if (!parsed.matched) return false;
+
+      // 指令正确但缺名称：仅礼貌提示（不二次追问，符合 v4.1 规则）
+      if (parsed.error === "empty" || !parsed.query) {
+        appendMessage(
+          "ai",
+          "请输入要检索的影视名称，例如：" + MOVIE_SEARCH_PREFIX + " 流浪地球"
+        );
+        return true;
+      }
+
+      const typing = showTyping();   // 检索期间显示思考点
+      if (window.CyberFx) window.CyberFx.thinking();
+      try {
+        const result = await searchMovies(parsed.query);
+        if (typing && typing.remove) typing.remove();
+        appendRichMessage("ai", renderMovieResults(result));
+        // 终态：触发“内容输出”特效后回落 idle
+        if (window.CyberFx) {
+          window.CyberFx.output();
+          setTimeout(() => { if (window.CyberFx) window.CyberFx.idle(); }, OUTPUT_BURST_MS);
+        }
+        return true;
+      } catch (e) {
+        if (typing && typing.remove) typing.remove();
+        const reason = (e && e.message) ? e.message : "未知错误";
+        console.error("[movie-search] 检索失败：", reason);
+        appendMessage("ai", "影视检索失败：" + reason);
+        if (window.CyberFx) window.CyberFx.idle();
+        return true;
+      }
+    }
+
     async function handleSend() {
       const raw = input.value.trim();
       if (!raw || state.busy) return;
@@ -459,15 +562,26 @@ export function useChatController() {
       updateSend();
       setBusy(true);
 
+      // —— 影视搜索指令拦截：严格匹配 "@影视搜索 <名称>" ——
+      // 命中则跳过 LLM / trace，直接走检索流程；未命中（matched=false）回落普通对话。
+      const movieHandled = await runMovieSearchCommand(raw);
+      if (movieHandled) {
+        setBusy(false);
+        input.focus();
+        return;
+      }
+
       const typing = showTyping();            // 首个 token 到达前显示思考点
 
       // ---- 构造请求上下文 + 初始 trace（对话发起瞬间） ----
       const built = buildMessages();
+      const activeProfile = providerManager.getActive();
       const traceInit = {
         status: "sending",
         sentAt: Date.now(),
-        model: MODEL_CONFIG.model,
+        model: (activeProfile || {}).model || "—",
         mode: "longcat",
+        key: activeProfile ? { id: activeProfile.id, label: activeProfile.label } : null,
         context: {
           history: built.historyMsgs,
         },
@@ -556,6 +670,9 @@ export function useChatController() {
         if (bubble) bubble.finalize(result.finalContent);
         state.history.push({ role: "assistant", text: result.finalContent, time: Date.now() });
         saveHistory();
+        runImagePipeline(result.finalContent);   // 终态触发：把最终回答额外生成一张配图（旁路，不影响文本）
+        // 自动记忆获取（旁路，fire-and-forget）：本轮对话结束后提炼用户长期事实写入 memory
+        runAutoMemory(raw, result.finalContent).catch(() => {});
         setTrace((prev) => (prev ? {
           ...prev, status: "done",
           mode: result.degraded ? "longcat-no-mcp" : "longcat",
@@ -599,6 +716,7 @@ export function useChatController() {
         // 渲染最终文本到气泡（已流式则定稿，否则新建）
         if (bubble) bubble.finalize(finalText);
         else appendMessage("ai", finalText);
+        runImagePipeline(finalText);   // 兜底/错误路径同样配图（旁路，不影响文本）
         if (window.CyberFx) window.CyberFx.idle();
       } finally {
         setBusy(false);

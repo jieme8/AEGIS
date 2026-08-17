@@ -8,20 +8,8 @@ import { useEffect, useState } from "react";
 const TASKS = [
   { id: "task-chat",    label: "对话", icon: "▸", onClick: () => document.getElementById("openChat")?.click() },
   { id: "task-mcp",     label: "MCP",  icon: "▣", onClick: () => document.getElementById("openMcp")?.click() },
-  { id: "task-oil",     label: "油价", icon: "￥", onClick: () => flash(".oil-dock") },
   { id: "task-dev",     label: "调试", icon: "⚙", onClick: () => window.toggleDevMode?.(), selfActive: true },
 ];
-
-// 目标元素均为 position:fixed（不在滚动流内），scrollIntoView 无效；
-// 改为给目标加一个短暂高亮类，提示用户「定位到该组件」。
-function flash(sel) {
-  const el = document.querySelector(sel);
-  if (!el) return;
-  el.classList.remove("tb-flash");
-  void el.offsetWidth; // 重启动画
-  el.classList.add("tb-flash");
-  setTimeout(() => el.classList.remove("tb-flash"), 900);
-}
 
 export function TaskBar({ active, onActivate }) {
   // 调试按钮反映真实 dev-mode 状态（其他按钮沿用选中态）

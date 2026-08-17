@@ -1,62 +1,64 @@
 /* =========================================================
-   油价显示组件 · OilPricePanel（横向长条 · 单品种）
-   视觉语言完全对齐主页 cyber.css：复用全局 token
-   (--cyan/--magenta/--panel/--txt/--dim/--mono)，.
-   panel 质感（圆角3px / rgba(0,240,255,.25)描边 / blur(3px) /
-   青色微光），文字遵循 .k(dim) .v(cyan发光) .v.mag(magenta)。
+   油价显示组件 · OilPricePanel（横向长条 · 单品种 · 紧凑版）
+   视觉语言对齐主页 cyber.css：复用全局 token
+   (--cyan/--magenta/--panel/--txt/--dim/--mono)。
    涨跌保持中国习惯：涨=红 跌=绿（组件局部语义变量）。
+   本版在信息完整、可读、不重叠的前提下适度压缩尺寸。
    ========================================================= */
 .oil {
   /* 直接复用主页 token，带兜底值（脱离主页单独运行也同款外观） */
-  width: min(420px, 94vw);
+  width: min(390px, 93vw);
   display: flex;
   align-items: center;
   gap: 9px;
   font-family: var(--mono, ui-monospace, "SF Mono", "Consolas", monospace);
   color: var(--txt, #c8f4ff);
   background: var(--panel, rgba(8,14,26,0.55));
-  border: 1px solid rgba(0,240,255,0.25);
+  border: 1px solid rgba(0,240,255,0.23);
   border-radius: 3px;                       /* 对齐主页 .panel */
-  padding: 8px 11px;
-  box-shadow: 0 0 18px rgba(0,240,255,0.12), inset 0 0 12px rgba(0,240,255,0.06);
+  padding: 7px 10px;
+  box-shadow: 0 0 14px rgba(0,240,255,0.10), inset 0 0 10px rgba(0,240,255,0.05);
   backdrop-filter: blur(3px);
-  letter-spacing: 1px;
+  letter-spacing: 0.6px;
+  line-height: 1.2;
   user-select: none;
 }
 
 /* 呼吸 LED（对齐主页状态点） */
-.oil-led { width: 7px; height: 7px; border-radius: 50%;
-           background: var(--cyan, #00f0ff); box-shadow: 0 0 8px var(--cyan, #00f0ff); flex: 0 0 auto; }
+.oil-led { width: 6px; height: 6px; border-radius: 50%;
+           background: var(--cyan, #00f0ff); box-shadow: 0 0 6px var(--cyan, #00f0ff); flex: 0 0 auto; }
 
-/* 价格主区 */
-.oil-main { display: flex; flex-direction: column; min-width: 0; }
-.oil-name { font-size: 10px; letter-spacing: 1px; color: var(--dim, #4a6b80);
+/* 价格主区 —— flex-shrink:0 防止被右侧挤压导致价格与涨跌重叠 */
+.oil-main { display: flex; flex-direction: column; flex-shrink: 0; }
+.oil-name { font-size: 9px; letter-spacing: 0.6px; line-height: 1.15; color: var(--dim, #4a6b80);
             white-space: nowrap; }                                  /* 对齐 .k */
-.oil-price { font-size: clamp(20px, 6.5vw, 25px); font-weight: 700; line-height: 1;
+.oil-price { font-size: clamp(18px, 5vw, 21px); font-weight: 700; line-height: 1;
              margin-top: 1px; color: var(--cyan, #00f0ff);          /* 对齐 .v */
-             text-shadow: 0 0 8px rgba(0,240,255,0.6); white-space: nowrap;
+             text-shadow: 0 0 6px rgba(0,240,255,0.5); white-space: nowrap;
              font-variant-numeric: tabular-nums; }
-.oil-price .unit { font-size: 10px; color: var(--dim, #4a6b80); font-weight: 400;
+.oil-price .unit { font-size: 9px; color: var(--dim, #4a6b80); font-weight: 400;
                    margin-left: 2px; text-shadow: none; }
 
-/* 涨跌幅（中国习惯 涨红跌绿） */
-.oil-chg { font-size: 11px; font-variant-numeric: tabular-nums;
-           display: flex; align-items: center; gap: 4px; white-space: nowrap; flex: 0 0 auto; }
-.oil-chg-up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 6px rgba(255,84,112,0.5); }
-.oil-chg-down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 6px rgba(47,230,160,0.5); }
-.oil-arrow { font-size: 10px; }
+/* 涨跌幅（中国习惯 涨红跌绿）*/
+.oil-chg { font-size: 11px; line-height: 1.15; font-variant-numeric: tabular-nums;
+           display: flex; align-items: center; gap: 3px; white-space: nowrap; flex: 0 0 auto;
+           margin-left: 2px; }                                        /* 与价格区间隔 */
+.oil-chg-up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 5px rgba(255,84,112,0.45); }
+.oil-chg-down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 5px rgba(47,230,160,0.45); }
+.oil-arrow { font-size: 9px; }
 
 /* 竖向分隔（对齐主页细描边） */
-.oil-sep { width: 1px; align-self: stretch; background: rgba(0,240,255,0.18); flex: 0 0 auto; }
+.oil-sep { width: 1px; align-self: stretch; background: rgba(0,240,255,0.18); flex: 0 0 auto;
+           margin: 2px 0; }                                           /* 上下留短边不顶满 */
 
 /* 右侧信息（调价 + 预估），复用 .k / .v 语言 */
 .oil-info { display: flex; flex-direction: column; gap: 3px; margin-left: auto; flex: 0 0 auto; }
-.oil-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-.oil-k { font-size: 10px; letter-spacing: 1px; color: var(--dim, #4a6b80); }   /* 对齐 .k */
-.oil-v { font-size: 11px; color: var(--cyan, #00f0ff);                         /* 对齐 .v */
-         font-variant-numeric: tabular-nums; text-shadow: 0 0 8px rgba(0,240,255,0.6); }
-.oil-v.up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 6px rgba(255,84,112,0.5); }
-.oil-v.down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 6px rgba(47,230,160,0.5); }
+.oil-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; line-height: 1.15; }
+.oil-k { font-size: 9px; letter-spacing: 0.6px; color: var(--dim, #4a6b80); }   /* 对齐 .k */
+.oil-v { font-size: 10px; line-height: 1.15; color: var(--cyan, #00f0ff);        /* 对齐 .v */
+         font-variant-numeric: tabular-nums; text-shadow: 0 0 6px rgba(0,240,255,0.5); }
+.oil-v.up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 5px rgba(255,84,112,0.45); }
+.oil-v.down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 5px rgba(47,230,160,0.45); }
 .oil-v.hold { color: var(--dim, #4a6b80); }
 .oil-dim { color: var(--dim, #4a6b80); }
 

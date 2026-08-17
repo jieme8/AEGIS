@@ -10,6 +10,7 @@ import {
 } from "./components/background/Background.jsx";
 import { SpectrumCanvas } from "./components/viz/SpectrumCanvas.jsx";
 import { TitleBar } from "./components/viz/TitleBar.jsx";
+import { ProviderSwitcher } from "./components/viz/ProviderSwitcher.jsx";
 import { FormSwitchButtons } from "./components/viz/FormSwitchButtons.jsx";
 import { TaskBar } from "./components/viz/TaskBar.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
@@ -17,6 +18,7 @@ import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
 import { Hud, ChatToggle, McpToggle } from "./components/hud/Hud.jsx";
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
 import { McpPanel } from "./components/mcp/McpPanel.jsx";
+import { ImageWindow } from "./components/viz/ImageWindow.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
@@ -45,6 +47,7 @@ export default function App() {
   // bootGone=遮罩已退场可卸载。
   const [booted, setBooted] = useState(false);
   const [bootGone, setBootGone] = useState(false);
+  // MCP 浮层默认开启：按需求直接展示服务器列表（不再默认隐藏）。
   const [mcpOpen, setMcpOpen] = useState(true);
   const [activeTask, setActiveTask] = useState(null);
 
@@ -63,6 +66,13 @@ export default function App() {
       setBooted(true);
     }, BOOT_MS);
     return () => clearTimeout(t);
+  }, []);
+
+  // 首个配图生成时自动打开独立窗口（不抢占用户对其它任务的选中态）
+  useEffect(() => {
+    const onStart = () => setActiveTask((t) => (t === "task-image" ? t : "task-image"));
+    window.addEventListener("jarvis:image-start", onStart);
+    return () => window.removeEventListener("jarvis:image-start", onStart);
   }, []);
 
   // 点击遮罩跳过启动（提前进入主界面）
@@ -88,6 +98,7 @@ export default function App() {
 
       {/* 顶部标题 + 形态切换 + 黑客数据流 */}
       <TitleBar />
+      <ProviderSwitcher />
       <FormSwitchButtons />
       <HackerStreamZone />
 
@@ -113,10 +124,16 @@ export default function App() {
       </div>
 
       {/* 主对话窗口 */}
-      <ChatPanel />
+      <ChatPanel
+        imageOpen={activeTask === "task-image"}
+        onToggleImage={() => setActiveTask((t) => (t === "task-image" ? null : "task-image"))}
+      />
 
       {/* MCP 服务器列表浮层（点左下 HUD 的「MCP 服务器」入口开合） */}
       <McpPanel open={mcpOpen} onClose={() => setMcpOpen(false)} />
+
+      {/* 独立配图窗口：生图结果渲染在这里，不再挤进聊天框 */}
+      <ImageWindow open={activeTask === "task-image"} onClose={() => setActiveTask(null)} />
 
       {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}
       <div className="oil-dock">

@@ -6,7 +6,7 @@ import { TracePanels } from "./TracePanels.jsx";
 
 const RESIZE_DIRS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"];
 
-export function ChatHeader({ traceOpen, onToggleTrace }) {
+export function ChatHeader({ traceOpen, onToggleTrace, imageOpen, onToggleImage }) {
   return (
     <div className="chat-header" id="chatDragHandle">
       <span className="led" />
@@ -19,6 +19,14 @@ export function ChatHeader({ traceOpen, onToggleTrace }) {
         aria-pressed={traceOpen ? "true" : "false"}
         onClick={onToggleTrace}
       >对话流</button>
+      <button
+        className={"chat-image" + (imageOpen ? " active" : "")}
+        id="toggleImage"
+        type="button"
+        aria-label="显示/隐藏配图窗口"
+        aria-pressed={imageOpen ? "true" : "false"}
+        onClick={onToggleImage}
+      >配图</button>
       <button className="chat-clear" id="clearChat" type="button" aria-label="清空对话上下文" disabled>清空</button>
       <button className="chat-close" id="closeChat" type="button" aria-label="关闭">×</button>
     </div>
@@ -36,7 +44,7 @@ export function ChatComposer() {
         className="chat-input"
         id="chatInput"
         rows={1}
-        placeholder="输入消息… Enter 发送 / Shift+Enter 换行"
+        placeholder="输入消息… 或 @影视搜索 流浪地球 检索影视资源 · Enter 发送"
       />
       <button className="chat-send" id="chatSend" type="submit" aria-label="发送" disabled>
         <svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" /></svg>
@@ -55,7 +63,7 @@ export function ResizeHandles() {
   );
 }
 
-export function ChatPanel() {
+export function ChatPanel({ imageOpen, onToggleImage }) {
   const { trace, traceOpen, closeTrace, toggleTrace, panelOpen } = useChatController();
   return (
     <>
@@ -65,7 +73,12 @@ export function ChatPanel() {
         data-dev-id="chat-panel"
         aria-hidden={panelOpen ? "false" : "true"}
       >
-        <ChatHeader traceOpen={traceOpen} onToggleTrace={toggleTrace} />
+        <ChatHeader
+          traceOpen={traceOpen}
+          onToggleTrace={toggleTrace}
+          imageOpen={imageOpen}
+          onToggleImage={onToggleImage}
+        />
         <ChatMessages />
         <ChatComposer />
         <ResizeHandles />

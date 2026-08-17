@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -8,6 +9,13 @@ export function TraceContext({ trace, open, onClose, index = 0 }) {
   const t = trace || {};
   const ctx = t.context || {};
   const history = ctx.history || [];
+  const histRef = useRef(null);
+
+  // 新历史追加时把滚动条贴到底部，始终看到最新一轮（与 trace-reasoning 思考过程一致）
+  useEffect(() => {
+    const el = histRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [history.length]);
 
   return (
     <FloatingPanel
@@ -23,7 +31,7 @@ export function TraceContext({ trace, open, onClose, index = 0 }) {
         <summary><span className="sec-idx">02</span> 附加上下文</summary>
         <div className="trace-sec-body">
           <div className="trace-sub">历史对话（最近 {history.length} 轮，实际随请求发送）</div>
-          <div className="trace-hist">
+          <div className="trace-hist" ref={histRef}>
             {history.length === 0 && <div className="trace-empty">（无历史）</div>}
             {history.map((m, i) => (
               <div className={`trace-hist-item ${m.role}`} key={i}>
