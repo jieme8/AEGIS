@@ -2,7 +2,7 @@ import { STATUS_META, fmtTime } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
- * 01 · 请求状态（独立桌面浮层）
+ * 请求状态（独立桌面浮层）
  * 显示当前对话请求的状态、模型、模式、发送时间。
  */
 export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
@@ -12,7 +12,7 @@ export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
   return (
     <FloatingPanel
       devId="trace-request-status"
-      title="对话流-01请求状态"
+      title="对话流-请求状态"
       defaultPos={{ x: 330, y: 80 }}
       width={300}
       open={open}
@@ -20,7 +20,7 @@ export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
       index={index}
     >
       <details className="trace-section" open>
-        <summary><span className="sec-idx">01</span> 请求状态</summary>
+        <summary>请求状态</summary>
         <div className="trace-sec-body">
           <div className="panel trace-kv">
             <div className="k">状态</div>

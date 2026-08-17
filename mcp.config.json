@@ -27,6 +27,15 @@
       "args": ["-y", "tavily-mcp"],
       "toolCallTimeoutMs": 20000,
       "_note": "Tavily 网页搜索（社区，质量好，专为 LLM 检索优化）。需 TAVILY_API_KEY 写入项目根 .env；Relay 启动时会载入 .env 注入本子进程。无 key 时连接会报 error，填 key 重启即转 connected。"
+    },
+    {
+      "name": "amap",
+      "enabled": true,
+      "transport": "stdio",
+      "command": "npx",
+      "args": ["-y", "@amap/amap-maps-mcp-server"],
+      "toolCallTimeoutMs": 25000,
+      "_note": "官方高德 MCP（@amap/amap-maps-mcp-server）。需 AMAP_MAPS_API_KEY（高德开放平台「Web 服务」类型 Key）写入项目根 .env；Relay 经 process.env 整体注入子进程，无需改 relay 代码。注意：此 Key ≠ 高德 JS API Key（Web 端 JS API，仅 Phase 2 浏览器渲染用），混用会 INVALID_USER_KEY。npx 不可用时换社区 @amap/amap-maps（同 env 名）。另支持 SSE 方式 url=https://mcp.amap.com/sse?key=KEY（key 进 URL 不如 env 安全，默认走 stdio）。"
     }
   ]
 }

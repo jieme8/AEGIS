@@ -205,24 +205,6 @@ export function useDevOverlay() {
       });
     });
 
-    // 组件清单（声明式渲染于 DevLegend.jsx）：用事件委托绑定悬停识别 + 点击复制
-    const legend = document.getElementById("devLegend");
-    const legendBody = document.getElementById("devLegendBody");
-    if (legendBody) {
-      legendBody.addEventListener("mouseover", (e) => {
-        const row = e.target.closest && e.target.closest(".dev-legend-row");
-        if (row && row.dataset.legendId) outlineById(row.dataset.legendId);
-      });
-      legendBody.addEventListener("click", (e) => {
-        const row = e.target.closest && e.target.closest(".dev-legend-row");
-        if (row && row.dataset.legendId) {
-          e.stopPropagation();
-          copyText(row.dataset.legendId, row);
-        }
-      });
-    }
-    // 清单折叠已移除：header 现在用于拖拽，点击不再触发折叠（避免「一点就缩小」）
-
     // 显隐开关（原「显示组件ID」按钮已并入底部任务栏「调试」入口，
     // 这里暴露全局切换函数供任务栏调用）
     function setDevMode(on) {

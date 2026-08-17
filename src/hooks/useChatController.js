@@ -420,6 +420,7 @@ export function useChatController() {
 
       state.history.push({ role, text: bubble.textContent, time: Date.now() });
       scrollBottom();
+      return bubble;
     }
 
     // 流式气泡：先建空气泡，后续逐块填充；textContent 防 XSS
@@ -455,6 +456,90 @@ export function useChatController() {
       messagesEl.appendChild(wrap);
       scrollBottom();
       return wrap;
+    }
+
+    // 影视检索进度：分阶段状态 + 进度条，替代原来“等待→整卡弹出”的突兀感
+    function showMovieProgress(query) {
+      if (window.CyberFx) window.CyberFx.thinking();
+      const wrap = document.createElement("div");
+      wrap.className = "chat-msg ai movie-progress";
+      wrap.innerHTML =
+        '<div class="who">AI · ' + fmtTime(Date.now()) + '</div>' +
+        '<div class="bubble">' +
+          '<div class="mp-head">🔍 影视搜索 · <b>' + escapeHtml(query) + '</b></div>' +
+          '<div class="mp-status"><span class="mp-spin"></span><span class="mp-text">正在连接实时检索代理…</span></div>' +
+          '<div class="mp-bar"><div class="mp-fill"></div></div>' +
+        '</div>';
+      messagesEl.appendChild(wrap);
+      scrollBottom();
+
+      const STAGES = [
+        "正在连接实时检索代理…",
+        "正在检索资源源（Bing）…",
+        "正在提取磁力 / 网盘直链…",
+        "正在整理并校验结果…",
+      ];
+      let stage = 0;
+      const textEl = wrap.querySelector(".mp-text");
+      const fillEl = wrap.querySelector(".mp-fill");
+      const iv = setInterval(() => {
+        stage = Math.min(stage + 1, STAGES.length - 1);
+        if (textEl) textEl.textContent = STAGES[stage];
+        if (fillEl) fillEl.style.width = ((stage + 1) / STAGES.length) * 100 + "%";
+      }, 650);
+
+      return {
+        done() {
+          clearInterval(iv);
+          if (textEl) textEl.textContent = "检索完成，正在生成结果…";
+          if (fillEl) fillEl.style.width = "100%";
+        },
+        remove() {
+          clearInterval(iv);
+          if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+        },
+      };
+    }
+
+    // 结果逐条淡入：分组内按条目 stagger、组间留间隔，营造“检索中逐渐填充”的真实感
+    function revealMovieResults(bubble) {
+      const root = bubble && bubble.querySelector(".movie-search");
+      if (!root || !root.classList.contains("ms-revealing")) return;
+      const STAGGER = 45;       // 同组内每条间隔(ms)
+      const GROUP_GAP = 140;    // 组与组之间的额外间隔(ms)
+      let t = 0;
+      const targets = [];
+      root.querySelectorAll(".ms-group").forEach((g) => {
+        const head = g.querySelector(".ms-gtitle");
+        const note = g.querySelector(".ms-gnote");
+        if (head) targets.push({ el: head, at: t });
+        if (note) targets.push({ el: note, at: t + 20 });
+        const items = g.querySelectorAll(".ms-item");
+        items.forEach((it, i) => {
+          targets.push({ el: it, at: t + 60 + i * STAGGER });
+        });
+        t += 60 + items.length * STAGGER + GROUP_GAP;
+      });
+      root.querySelectorAll(".ms-tips, .ms-warns").forEach((el) => {
+        targets.push({ el, at: t });
+        t += 80;
+      });
+
+      if (!targets.length) { root.classList.remove("ms-revealing"); return; }
+      let pending = targets.length;
+      targets.forEach(({ el, at }) => {
+        setTimeout(() => {
+          el.classList.add("ms-show");
+          if (--pending <= 0) root.classList.remove("ms-revealing");
+        }, at);
+      });
+      // 安全兜底：异常情况下 4s 后强制全部显示，避免结果停留在隐藏态
+      setTimeout(() => {
+        root
+          .querySelectorAll(".ms-gtitle,.ms-gnote,.ms-item,.ms-tips,.ms-warns")
+          .forEach((el) => el.classList.add("ms-show"));
+        root.classList.remove("ms-revealing");
+      }, 4000);
     }
 
     // ---------- 构造请求消息（system + 最近 12 轮历史） ----------
@@ -567,20 +652,23 @@ export function useChatController() {
         return true;
       }
 
-      const typing = showTyping();   // 检索期间显示思考点
-      if (window.CyberFx) window.CyberFx.thinking();
+      const progress = showMovieProgress(parsed.query);   // 分阶段“检索中”进度
       try {
         const result = await searchMovies(parsed.query);
-        if (typing && typing.remove) typing.remove();
-        appendRichMessage("ai", renderMovieResults(result));
-        // 终态：触发“内容输出”特效后回落 idle
-        if (window.CyberFx) {
-          window.CyberFx.output();
-          setTimeout(() => { if (window.CyberFx) window.CyberFx.idle(); }, OUTPUT_BURST_MS);
-        }
+        progress.done();
+        // 稍作停顿让进度条走满，再切到结果卡，避免“思考点→整卡”的硬切
+        setTimeout(() => {
+          progress.remove();
+          const bubble = appendRichMessage("ai", renderMovieResults(result));
+          revealMovieResults(bubble);   // 结果逐条淡入
+          if (window.CyberFx) {
+            window.CyberFx.output();
+            setTimeout(() => { if (window.CyberFx) window.CyberFx.idle(); }, OUTPUT_BURST_MS);
+          }
+        }, 350);
         return true;
       } catch (e) {
-        if (typing && typing.remove) typing.remove();
+        progress.remove();
         const reason = (e && e.message) ? e.message : "未知错误";
         console.error("[movie-search] 检索失败：", reason);
         appendMessage("ai", "影视检索失败：" + reason);

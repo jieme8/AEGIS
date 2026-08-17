@@ -15,7 +15,7 @@ import { SettingsPanel } from "./components/viz/SettingsPanel.jsx";
 import { TaskBar } from "./components/viz/TaskBar.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
 import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
-import { Hud, ChatToggle, McpToggle } from "./components/hud/Hud.jsx";
+import { Hud, ChatToggle, McpToggle, ScreenSizeBadge } from "./components/hud/Hud.jsx";
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
 import { McpPanel } from "./components/mcp/McpPanel.jsx";
 import { ImageWindow } from "./components/viz/ImageWindow.jsx";
@@ -122,6 +122,7 @@ export default function App() {
         <div><span className="k">SIG</span> <span className="v mag" id="hud-sig">STREAM</span></div>
         <div><span className="k">FREQ</span> <span className="v" id="hud-freq">20–20k</span></div>
         <div><span className="k">GAIN</span> <span className="v mag">+0.0dB</span></div>
+        <ScreenSizeBadge />
       </Hud>
 
       {/* 对话 / MCP 的开关触发器（原 HUD 上的可见按钮已移除，

@@ -27,7 +27,7 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
   return (
     <FloatingPanel
       devId="trace-mcp-tools"
-      title="对话流-05工具调用"
+      title="对话流-工具调用"
       defaultPos={{ x: 330, y: 310 }}
       width={300}
       open={open}
@@ -36,7 +36,7 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
     >
       <details className="trace-section" open>
         <summary>
-          <span className="sec-idx">05</span> 工具调用（MCP）
+          工具调用（MCP）
           {mcp && mcp.enabled && (
             <span className={`trace-mcp-badge ${mcpMeta.cls}`}>{mcpMeta.label}</span>
           )}

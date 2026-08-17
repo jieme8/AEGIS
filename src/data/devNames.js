@@ -18,11 +18,10 @@ export const DEV_NAMES = {
   "oil-price-panel": "油价行情卡片",
   "mcp-panel": "MCP 服务器列表",
   "mcp-toggle": "MCP 切换按钮",
-  "dev-legend": "组件清单面板",
-  "trace-request-status": "对话流-01请求状态",
-  "trace-prompt": "对话流-03提示词+上下文",
-  "trace-reasoning": "对话流-04思考过程",
-  "trace-mcp-tools": "对话流-05工具调用",
+  "trace-request-status": "对话流-请求状态",
+  "trace-prompt": "对话流-提示词",
+  "trace-reasoning": "对话流-思考过程",
+  "trace-mcp-tools": "对话流-工具调用",
 };
 
 // 清单分组（顺序即展示顺序）
@@ -30,6 +29,6 @@ export const DEV_GROUPS = [
   { title: "主组件 / 交互", ids: ["fx-spectrum", "fx-bars", "fx-title", "fx-scanbar", "fx-hacker-stream", "chat-panel", "fx-form-switch"] },
   { title: "HUD 面板", ids: ["hud-bl", "task-bar"] },
   { title: "背景特效（不可移动）", ids: ["fx-ring", "fx-grid", "fx-data-rain", "fx-scanlines", "fx-vignette", "fx-glitch"] },
-  { title: "数据面板 / 浮层", ids: ["oil-price-panel", "mcp-panel", "mcp-toggle", "dev-legend"] },
+  { title: "数据面板 / 浮层", ids: ["oil-price-panel", "mcp-panel", "mcp-toggle"] },
   { title: "模型对话过程（独立浮层）", ids: ["trace-request-status", "trace-prompt", "trace-reasoning", "trace-mcp-tools"] },
 ];

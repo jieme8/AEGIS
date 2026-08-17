@@ -1,14 +1,13 @@
 // 设置面板：聚合语言模型 / 生图模型 / 生图比例 三个切换器。
-// 由任务栏「设置」按钮触发，ESC 或点击关闭按钮关闭。
-import { useEffect, useRef } from "react";
+// 由任务栏「设置」按钮触发。属于「居中弹层（带遮罩）」，非可移动窗口。
+// 关闭方式：ESC / 点击遮罩 / 点击右上角关闭按钮。
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { ProviderSwitcher } from "./ProviderSwitcher.jsx";
 import { ImageProviderSwitcher } from "./ImageProviderSwitcher.jsx";
 import { AspectSwitcher } from "./AspectSwitcher.jsx";
 
 export function SettingsPanel({ open, onClose }) {
-  const boxRef = useRef(null);
-
   // ESC 关闭
   useEffect(() => {
     if (!open) return undefined;
@@ -19,60 +18,53 @@ export function SettingsPanel({ open, onClose }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  // 标题栏拖动
-  const onHeadPointerDown = (e) => {
-    if (e.target.closest(".sp-close")) return;
-    const box = boxRef.current;
-    if (!box) return;
-    const startX = e.clientX, startY = e.clientY;
-    const origLeft = box.offsetLeft, origTop = box.offsetTop;
-    box.style.right = "auto";
-    box.style.userSelect = "none";
-    const onMove = (ev) => {
-      const dx = ev.clientX - startX, dy = ev.clientY - startY;
-      const maxLeft = Math.max(0, window.innerWidth - box.offsetWidth);
-      const maxTop = Math.max(0, window.innerHeight - box.offsetHeight);
-      box.style.left = Math.max(0, Math.min(origLeft + dx, maxLeft)) + "px";
-      box.style.top = Math.max(0, Math.min(origTop + dy, maxTop)) + "px";
-    };
-    const onUp = () => {
-      box.style.userSelect = "";
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    e.preventDefault();
-  };
-
   if (!open) return null;
 
   return createPortal(
     <div
-      ref={boxRef}
-      className="settings-panel"
-      role="dialog"
-      aria-label="设置面板"
-      data-dev-id="settings-panel"
+      className="settings-backdrop"
+      onClick={onClose}
+      data-dev-id="settings-backdrop"
     >
-      <div className="sp-head" onPointerDown={onHeadPointerDown}>
-        <span className="sp-title">系统设置 · SETTINGS</span>
-        <button className="sp-close" type="button" aria-label="关闭" onClick={onClose}>
-          ×
-        </button>
-      </div>
-      <div className="sp-body">
-        <div className="sp-section" data-dev-id="sp-section-api">
-          <div className="sp-label">语言模型</div>
-          <ProviderSwitcher />
+      <div
+        className="settings-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="设置面板"
+        data-dev-id="settings-panel"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="settings-head">
+          <span className="settings-title">系统设置 · SETTINGS</span>
+          <button
+            className="settings-close"
+            type="button"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            ×
+          </button>
         </div>
-        <div className="sp-section" data-dev-id="sp-section-img">
-          <div className="sp-label">生图模型</div>
-          <ImageProviderSwitcher />
+
+        <div className="settings-section" data-dev-id="sp-section-api">
+          <div className="settings-section-title">语言模型</div>
+          <div className="settings-section-body">
+            <ProviderSwitcher />
+          </div>
         </div>
-        <div className="sp-section" data-dev-id="sp-section-ratio">
-          <div className="sp-label">生图比例</div>
-          <AspectSwitcher />
+
+        <div className="settings-section" data-dev-id="sp-section-img">
+          <div className="settings-section-title">生图模型</div>
+          <div className="settings-section-body">
+            <ImageProviderSwitcher />
+          </div>
+        </div>
+
+        <div className="settings-section" data-dev-id="sp-section-ratio">
+          <div className="settings-section-title">生图比例</div>
+          <div className="settings-section-body">
+            <AspectSwitcher />
+          </div>
         </div>
       </div>
     </div>,

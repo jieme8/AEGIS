@@ -158,15 +158,10 @@ export function ImageWindow({ open, onClose }) {
     };
   }, []);
 
-  // ESC 关闭
+  // 画廊内容变化（新增卡片 / 出图 / 失败）时始终贴底，滚动条默认在最下面
   useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    scrollToBottom();
+  }, [items]);
 
   // 标题栏拖动（与 McpPanel 同款：浮层为 body 级元素，全页可拖）
   const onHeadPointerDown = (e) => {

@@ -347,6 +347,7 @@ function MemoryModal({ open, onClose, client }) {
 
 export function McpPanel({ open, onClose }) {
   const boxRef = useRef(null);
+  const bodyRef = useRef(null);
   const [dragging, setDragging] = useState(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -378,14 +379,6 @@ export function McpPanel({ open, onClose }) {
     return () => clearInterval(timer);
   }, [open]);
 
-  // ESC 关闭
-  useEffect(() => {
-    if (!open) return undefined;
-    const onKey = (e) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
-
   // 呼吸灯：监听 MCP 工具调用开始/结束事件
   useEffect(() => {
     const onStart = (e) => setCallingTool((e && e.detail && e.detail.name) || null);
@@ -400,6 +393,21 @@ export function McpPanel({ open, onClose }) {
       window.removeEventListener("jarvis:mcp-tool-end", onEnd);
     };
   }, []);
+
+  // 调用中的工具若落在 .mcp-body 可视区之外，平滑滚动使其进入视野（呼吸灯随之闪烁）
+  useEffect(() => {
+    if (!callingTool) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const el = body.querySelector(".mcp-tool-calling");
+    if (!el) return;
+    const br = body.getBoundingClientRect();
+    const er = el.getBoundingClientRect();
+    const fullyVisible = er.top >= br.top && er.bottom <= br.bottom;
+    if (!fullyVisible) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [callingTool]);
 
   // 标题栏拖动（与 ChatTraceDrawer 同款：浮层为 body 级元素，全页可拖）
   const onHeadPointerDown = (e) => {
@@ -449,7 +457,7 @@ export function McpPanel({ open, onClose }) {
         <button className="mcp-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
       </div>
 
-      <div className="mcp-body">
+      <div className="mcp-body" ref={bodyRef}>
         {loading && <LoadingDots label="正在查询 MCP 状态…" />}
         {!loading && error && (
           <div className="mcp-empty err mcp-hint">

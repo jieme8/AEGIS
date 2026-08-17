@@ -15,11 +15,14 @@
  *                       "key":"...","model":"...","expiresAt":"2026-09-01"}]
  *      （一旦设置 VITE_PROVIDERS，便捷模式的自动配置被忽略，以 JSON 为准）
  *
- * dev / prod：
- *   - LongCat 走同源代理 /api/longcat（密钥由代理注入、避免 CORS）。
- *   - 阿里默认走 https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions；
- *     可通过 VITE_QWEN_ENDPOINT 覆盖为其它 OpenAI 兼容端点（如 ModelScope token-plan）。
- *     dev 下走同源代理 /api/qwen 避免 CORS；prod 浏览器直连。
+ * dev / preview（vite 同源代理）：
+ *   - LongCat 始终走同源代理 /api/longcat（密钥由代理注入、避免 CORS）。
+ *   - 阿里始终走同源代理 /api/qwen（密钥由浏览器自带 Authorization，代理透传）。
+ *     target / rewrite 由 VITE_QWEN_ENDPOINT 动态解析（默认 dashscope，
+ *     可覆盖为 ModelScope token-plan 等 OpenAI 兼容端点）。
+ *   - 注意：vite preview 现在也复用同一套代理（server.proxy 与 preview.proxy 一致），
+ *     否则打包产物中 endpoint 为完整直连 URL，浏览器直连会被 CORS 拦截。
+ *   - 真实 prod 静态部署需在前置代理层配置 /api/* 转发到对应后端。
  */
 
 const LONGCHAT_API_KEY =
@@ -31,9 +34,10 @@ const LONGCHAT_API_KEY =
 const IS_DEV =
   typeof import.meta !== "undefined" && import.meta.env && import.meta.env.DEV;
 
-export const LONGCAT_EP = IS_DEV
-  ? "/api/longcat"
-  : "https://api.longcat.chat/openai/v1/chat/completions";
+// 始终走同源代理 /api/longcat（dev + preview 共用同一套 vite 代理）。
+// 阿里/token-plan 不返回 CORS 头，且 prod 直连会把密钥暴露在浏览器；
+// 因此本地 dev 与 vite preview 都经代理转发，真实部署需在前置代理层配置 /api/* 转发。
+export const LONGCAT_EP = "/api/longcat";
 function envVal(name) {
   return typeof import.meta !== "undefined" && import.meta.env
     ? import.meta.env[name]
@@ -46,12 +50,8 @@ function envList(raw) {
     .filter(Boolean);
 }
 
-// 阿里 Qwen 端点可覆盖：.env 给 OpenAI 兼容 base URL（不含 /chat/completions），
-// 代码自动补全为完整 completions 地址；dev 下仍走 /api/qwen 代理。
-const QWEN_BASE =
-  envVal("VITE_QWEN_ENDPOINT") ||
-  "https://dashscope.aliyuncs.com/compatible-mode/v1";
-const QWEN_EP = QWEN_BASE.replace(/\/+$/, "") + "/chat/completions";
+// 阿里 Qwen 的完整 base URL 仅由 vite.config 的 /api/qwen 代理解析使用（见 VITE_QWEN_ENDPOINT），
+// 浏览器侧统一走同源代理 /api/qwen，不再需要在前端拼出完整直连地址。
 function parseExpiry(v) {
   if (!v) return null;
   const s = String(v).trim();
@@ -114,7 +114,10 @@ function parseProviders() {
       normalizeProfile(
         {
           label: envVal("VITE_QWEN_LABEL") || "阿里TokenPlan",
-          endpoint: IS_DEV ? "/api/qwen" : QWEN_EP,
+          // 始终走同源代理 /api/qwen（dev + preview 一致）。
+          // 阿里 token-plan / dashscope 不返回 CORS 头，浏览器直连会被拦截；
+          // 经 vite 同源代理转发则无跨域问题。真实 prod 部署需前置代理配置 /api/*。
+          endpoint: "/api/qwen",
           key: qwenKey.trim(),
           model: envVal("VITE_QWEN_MODEL") || "qwen-coder-plus",
           expiresAt: envVal("VITE_QWEN_EXPIRES") || null,

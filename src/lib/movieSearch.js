@@ -324,7 +324,7 @@ export function renderMovieResults(result) {
   const warnsHtml = (result.warnings || []).map((w) => `<li>${escapeHtml(w)}</li>`).join("");
 
   return (
-    `<div class="movie-search">` +
+    `<div class="movie-search ms-revealing">` +
     `<div class="ms-head">🔍 影视搜索 · <b>${q}</b> ${liveBadge}</div>` +
     `<div class="ms-summary">${summary}</div>` +
     groupsHtml +

@@ -31,7 +31,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
   return (
     <FloatingPanel
       devId="trace-prompt"
-      title="对话流-03提示词"
+      title="对话流-提示词"
       defaultPos={{ x: 970, y: 340 }}
       width={320}
       open={open}
@@ -39,7 +39,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
       index={index}
     >
       <details className="trace-section" open>
-        <summary><span className="sec-idx">03</span> 提示词</summary>
+        <summary>提示词</summary>
         <div className="trace-sec-body" ref={bodyRef}>
           {/* System Prompt */}
           <div className="trace-sub">

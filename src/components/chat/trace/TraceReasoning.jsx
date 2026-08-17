@@ -22,7 +22,7 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
   return (
     <FloatingPanel
       devId="trace-reasoning"
-      title="对话流-04思考过程"
+      title="对话流-思考过程"
       defaultPos={{ x: 970, y: 80 }}
       width={320}
       open={open}
@@ -30,7 +30,7 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
       index={index}
     >
       <details className="trace-section" open>
-        <summary><span className="sec-idx">04</span> 思考过程</summary>
+        <summary>思考过程</summary>
         <div className="trace-sec-body">
           {hasReasoning ? (
             <pre className="trace-code" ref={codeRef}>{reply.reasoning}</pre>

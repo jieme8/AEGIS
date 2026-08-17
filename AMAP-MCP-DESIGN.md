@@ -1,7 +1,7 @@
 # 高德地图 MCP 接入设计 · J.A.R.V.I.S. Cyber Audio Spectrum
 
 > 版本：v1 · 2026-08-17
-> 状态：**设计已定稿，待实施**（用户选择先存档、暂不改动工程）
+> 状态：**已落地（Phase 1 MCP 接入完成，连接/工具/listTools/调用路由均验证通过；待用户填真实「Web 服务」Key 后做端到端真实数据验证）**
 > 目标：把高德地图（Amap）的位置服务能力接入现有 MCP 管线，使 LongCat Agent 具备地理编码、路径规划、POI 搜索、天气查询等真实工具调用。
 
 ---
@@ -9,7 +9,7 @@
 ## 0. 摘要 / 关键结论
 
 - **现有管线已天然支持**：MCP Relay（:8787）+ `/api/mcp` 同源代理 + 浏览器 `mcpClient` + `agentLoop` tool-loop 都已就位。**新增一个地图服务器几乎不需要写编排代码**。
-- **接入本质** = 在 `mcp.config.json` 增加一个 stdio server（`@amap/amap-maps`）+ 在 `.env` 写入 `AMAP_MAPS_API_KEY`（高德「Web 服务」类型）。Relay 经 `process.env` 注入子进程，**无需改 Relay 代码**。
+- **接入本质** = 在 `mcp.config.json` 增加一个 stdio server（`@amap/amap-maps-mcp-server`）+ 在 `.env` 写入 `AMAP_MAPS_API_KEY`（高德「Web 服务」类型）。Relay 经 `process.env` 注入子进程，**无需改 Relay 代码**。
 - **浏览器侧**：
   - Phase 1（零 UI 改动）：复用现有 trace「05 工具调用」面板展示结果，对话里是模型综合后的自然语言答案。
   - Phase 2（可选增强）：加一个「地图」浮层，用高德 JS API 2.0 把坐标/路线渲染出来。
@@ -35,7 +35,7 @@
 
 ## 2. 服务器选型与工具清单
 
-**首选官方包 `@amap/amap-maps`**（`npx -y @amap/amap-maps`，高德官方维护）。暴露 12 个 `maps_*` 工具，前缀天然避免与 Tavily 的 `search`/`search_*` 工具重名：
+**首选官方包 `@amap/amap-maps-mcp-server`**（`npx -y @amap/amap-maps-mcp-server`，高德官方维护）。暴露 12 个 `maps_*` 工具，前缀天然避免与 Tavily 的 `search`/`search_*` 工具重名：
 
 | 类别 | 工具 | 说明 |
 |---|---|---|
@@ -68,7 +68,7 @@
   "enabled": false,
   "transport": "stdio",
   "command": "npx",
-  "args": ["-y", "@amap/amap-maps"],
+  "args": ["-y", "@amap/amap-maps-mcp-server"],
   "toolCallTimeoutMs": 20000,
   "_note": "官方高德 MCP。需 AMAP_MAPS_API_KEY(高德「Web 服务」类型) 写入项目 .env；Relay 经 process.env 注入子进程，无需改 relay 代码。npx 不可用时退回社区 amap-maps-mcp(同 env 名)。"
 }
@@ -149,13 +149,13 @@ AMAP_MAPS_API_KEY=你的高德Web服务Key
 
 - 高德系 **GCJ-02（火星坐标）**，格式 `lng,lat`（经度在前），与 WGS-84（GPS 原始）不同。
 - 绝大多数场景：用户输入是**地址/城市名**，经 `maps_geo` 编码成 GCJ-02，无需转换。
-- 若上游数据是 **GPS/WGS-84 坐标**，必须先经高德坐标转换 API 转 GCJ-02 再喂给 MCP/JS API；当前 `@amap/amap-maps` 工具集未直接暴露转换接口，需要时走 `maps_regeocode` 辅助或单独调用高德「坐标转换」Web API。
+- 若上游数据是 **GPS/WGS-84 坐标**，必须先经高德坐标转换 API 转 GCJ-02 再喂给 MCP/JS API；当前 `@amap/amap-maps-mcp-server` 工具集未直接暴露转换接口，需要时走 `maps_regeocode` 辅助或单独调用高德「坐标转换」Web API。
 
 ---
 
 ## 8. 风险与回退
 
-- **网络依赖**：Relay 首次 `npx -y @amap/amap-maps` 需访问 npm registry；运行时需访问 `restapi.amap.com`。本沙箱若按 `fetch`/`memory` 的历史情况被挡，本地开发机正常；**完全离线则 MCP 无法工作**（必须连高德）。
+- **网络依赖**：Relay 首次 `npx -y @amap/amap-maps-mcp-server` 需访问 npm registry；运行时需访问 `restapi.amap.com`。本沙箱若按 `fetch`/`memory` 的历史情况被挡，本地开发机正常；**完全离线则 MCP 无法工作**（必须连高德）。
 - **配额**：高德 Web 服务免费 5000 次/日/接口，Demo 足够；生产需评估并可能升级。
 - **工具循环上限**：`agentLoop` 已封顶 ≤5 次迭代 + 错误兜底，恶意/异常工具调用不会导致无限循环。
 - **降级**：MCP 不可用 → 回落「无工具对话」，trace 标 `mcp-unavailable`，基础对话不受影响。
