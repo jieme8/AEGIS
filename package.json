@@ -4,14 +4,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -n vite,movie -c cyan,green \"vite\" \"node server/movie-search.mjs\"",
     "prebuild": "node scripts/clean-dist.cjs",
     "build": "vite build",
     "preview": "vite preview",
     "mcp-relay": "node server/mcp-relay.mjs",
     "genimg": "node server/image-proxy.mjs",
     "movie-search": "node server/movie-search.mjs",
-    "dev:all": "concurrently -n vite,relay,genimg,movie -c cyan,magenta,yellow,green \"npm:dev\" \"npm:mcp-relay\" \"npm:genimg\" \"npm:movie-search\"",
+    "dev:all": "concurrently -n vite,relay,genimg,movie -c cyan,magenta,yellow,green \"vite\" \"node server/mcp-relay.mjs\" \"node server/image-proxy.mjs\" \"node server/movie-search.mjs\"",
     "test": "node scripts/verify-engine.cjs && node --test tests/sse.test.mjs tests/toolCalls.test.mjs tests/mcp.test.mjs",
     "test:sse": "node --test tests/sse.test.mjs",
     "verify": "node scripts/verify-engine.cjs && node scripts/clscheck.mjs"

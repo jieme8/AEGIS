@@ -4,8 +4,9 @@
 //  - 解耦：配图渲染不再写进 chat-panel，改由 ImageWindow 监听 jarvis:image-* 事件画廊式呈现。
 //  - 完全旁路：不改动既有文本流；任何失败仅影响那张图，文本回答不受影响。
 import { IMAGE_CONFIG } from "../config/imageConfig.js";
-import { optimizePrompt } from "./promptOptimizer.js";
+import { designImagePrompt } from "./imageDesigner.js";
 import { generateImage } from "./imageGenClient.js";
+import { aspectManager } from "./aspectManager.js";
 
 // ============================================================
 // 价值判定（是否值得生图）
@@ -153,9 +154,9 @@ if (typeof window !== "undefined" && !regenBound) {
 
 async function generateFor(id, finalText, assess) {
   try {
-    const optimized = await optimizePrompt(finalText, {
-      style: IMAGE_CONFIG.style,
-      aspect: IMAGE_CONFIG.aspect,
+    // 设计环节：先把文字内容规划成视觉方案（主题/版式/配色/风格），再出提示词去生图
+    const optimized = await designImagePrompt(finalText, {
+      aspect: aspectManager.getActive(),
     });
     emitPrompt(id, optimized.prompt, optimized.source); // 提示词就绪即显示（生图进行中）
     const img = await generateImage(optimized);

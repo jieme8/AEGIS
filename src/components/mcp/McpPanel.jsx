@@ -32,7 +32,7 @@ function LoadingDots({ label }) {
   );
 }
 
-function McpRow({ s, client, onOpenMemory }) {
+function McpRow({ s, client, onOpenMemory, callingTool }) {
   const meta = STATUS_META[s.status] || STATUS_META.connecting;
   const usable = s.status === "connected";
   const isMemory = s.name === "memory" && usable && client;
@@ -78,7 +78,7 @@ function McpRow({ s, client, onOpenMemory }) {
       {s.tools && s.tools.length > 0 && (
         <div className="mcp-tools">
           {s.tools.map((t) => (
-            <span className="mcp-tool" key={t}>{t}</span>
+            <span className={"mcp-tool" + (callingTool === t ? " mcp-tool-calling" : "")} key={t}>{t}</span>
           ))}
         </div>
       )}
@@ -354,6 +354,8 @@ export function McpPanel({ open, onClose }) {
   const clientRef = useRef(null);
   if (!clientRef.current) clientRef.current = new MCPClient();
   const [memOpen, setMemOpen] = useState(false);
+  // 呼吸灯：记录当前正在调用的工具名
+  const [callingTool, setCallingTool] = useState(null);
 
   const fetchStatus = async () => {
     try {
@@ -383,6 +385,21 @@ export function McpPanel({ open, onClose }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
+
+  // 呼吸灯：监听 MCP 工具调用开始/结束事件
+  useEffect(() => {
+    const onStart = (e) => setCallingTool((e && e.detail && e.detail.name) || null);
+    const onEnd = (e) => setCallingTool((prev) => {
+      const name = (e && e.detail && e.detail.name) || null;
+      return prev === name ? null : prev;
+    });
+    window.addEventListener("jarvis:mcp-tool-start", onStart);
+    window.addEventListener("jarvis:mcp-tool-end", onEnd);
+    return () => {
+      window.removeEventListener("jarvis:mcp-tool-start", onStart);
+      window.removeEventListener("jarvis:mcp-tool-end", onEnd);
+    };
+  }, []);
 
   // 标题栏拖动（与 ChatTraceDrawer 同款：浮层为 body 级元素，全页可拖）
   const onHeadPointerDown = (e) => {
@@ -453,6 +470,7 @@ export function McpPanel({ open, onClose }) {
             key={s.name}
             client={clientRef.current}
             onOpenMemory={s.name === "memory" ? () => setMemOpen(true) : undefined}
+            callingTool={callingTool}
           />
         ))}
       </div>

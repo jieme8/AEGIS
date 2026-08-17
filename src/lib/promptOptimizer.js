@@ -13,6 +13,10 @@ const STYLE_SUFFIX = {
   default: "illustration, detailed, balanced composition",
 };
 
+// 叠加模式专用：允许面板里有风格化短标题/抽象符号，但禁止长段落（避免中文长文本被画错/漏提示词）。
+// 文字保真由前端 HTML 覆盖层负责；图里只需要「看起来像有内容」即可。
+const OVERLAY_SUFFIX = "stylized neon headlines, abstract futuristic glyphs and charts, short labels only, no long paragraphs";
+
 // 清洗：去掉 markdown / 代码块 / 图片链接 / URL / 多余符号，保留可读语义
 function clean(text) {
   return String(text)
@@ -30,8 +34,24 @@ function clean(text) {
 function buildRulePrompt(text, opts) {
   const style = opts.style || "cyber";
   const cleaned = clean(text);
-  const subject = (cleaned || "abstract cyber scene").slice(0, 160);
   const suffix = STYLE_SUFFIX[style] || STYLE_SUFFIX.default;
+
+  // 叠加模式：主题只取前 60 字符，避免把大段原文塞进提示词导致泄漏/错字；
+  // 同时保留面板里的风格化短标题/抽象符号，让图看起来有内容。
+  if (opts.overlay) {
+    const shortSubject = cleaned.slice(0, 60) || "AI news";
+    const prompt = `cyberpunk holographic dashboard for ${shortSubject}, glowing data panels, ${OVERLAY_SUFFIX}, ${suffix}`.slice(0, 500);
+    return {
+      prompt,
+      display: cleaned.length > 280 ? cleaned.slice(0, 278) + "…" : cleaned,
+      style,
+      aspectRatio: opts.aspect || "16:9",
+      source: "overlay-rule",
+      overlayText: text,
+    };
+  }
+
+  const subject = (cleaned || "abstract cyber scene").slice(0, 160);
   const prompt = `${subject}, ${suffix}`.slice(0, 400);
   return {
     prompt,
@@ -88,13 +108,15 @@ async function optimizePromptLlm(text, opts) {
     if (!out) throw new Error("empty llm prompt");
     const style = opts.style || "cyber";
     const suffix = STYLE_SUFFIX[style] || STYLE_SUFFIX.default;
-    const prompt = (out + (suffix ? ", " + suffix : "")).slice(0, 500);
+    const extra = opts.overlay ? ", " + OVERLAY_SUFFIX : "";
+    const prompt = (out + (suffix ? ", " + suffix : "") + extra).slice(0, 500);
     return {
       prompt,
       display: clean(text).length > 280 ? clean(text).slice(0, 278) + "…" : clean(text),
       style,
       aspectRatio: opts.aspect || "16:9",
-      source: "llm",
+      source: opts.overlay ? "overlay-llm" : "llm",
+      ...(opts.overlay ? { overlayText: text } : {}),
     };
   } catch (e) {
     return { ...rule, source: "rule-fallback" };

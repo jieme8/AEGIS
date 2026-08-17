@@ -1,22 +1,35 @@
+import { useState } from "react";
 import { CopyButton, MCP_STATUS } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
  * 06 · 工具调用（MCP）（独立桌面浮层）
- * 显示本次对话触发的 MCP 工具调用列表（含入参/返回），默认展开。
+ * 显示本次对话触发的 MCP 工具调用列表（简略视图：工具名+状态+结果摘要，可展开看完整入参/返回）。
  */
 export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
   const t = trace || {};
   const mcp = t.mcp || null;
   const invocations = (mcp && mcp.invocations) || [];
   const mcpMeta = (mcp && MCP_STATUS[mcp.status]) || MCP_STATUS.pending;
+  // 展开状态（按 callId 记录）
+  const [expanded, setExpanded] = useState({});
+
+  const toggleExpand = (key) =>
+    setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  // 截断结果文本用于摘要显示
+  const summarize = (result) => {
+    if (!result) return "—";
+    const text = typeof result === "string" ? result : JSON.stringify(result);
+    return text.length > 80 ? text.slice(0, 80) + "…" : text;
+  };
 
   return (
     <FloatingPanel
       devId="trace-mcp-tools"
       title="对话流-05工具调用"
-      defaultPos={{ x: 640, y: 80 }}
-      width={320}
+      defaultPos={{ x: 330, y: 310 }}
+      width={300}
       open={open}
       onClose={onClose}
       index={index}
@@ -26,6 +39,9 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
           <span className="sec-idx">05</span> 工具调用（MCP）
           {mcp && mcp.enabled && (
             <span className={`trace-mcp-badge ${mcpMeta.cls}`}>{mcpMeta.label}</span>
+          )}
+          {invocations.length > 0 && (
+            <span className="trace-mcp-count">{invocations.length} 次调用</span>
           )}
         </summary>
         <div className="trace-sec-body">
@@ -38,28 +54,51 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
           ) : invocations.length === 0 ? (
             <div className="trace-empty">（本次对话未触发任何工具调用）</div>
           ) : (
-            invocations.map((inv, i) => (
-              <div className="trace-tool" key={inv.callId || i}>
-                <div className="trace-tool-head">
-                  <span className="trace-tool-idx">{i + 1}</span>
-                  <span className="trace-tool-name">{inv.name}</span>
-                  {inv.server && <span className="trace-tool-server">@{inv.server}</span>}
-                  {inv.isError && <span className="trace-tool-err">执行失败</span>}
+            invocations.map((inv, i) => {
+              const key = inv.callId || `tool-${i}`;
+              const exp = !!expanded[key];
+              return (
+                <div className="trace-tool" key={key}>
+                  <div
+                    className="trace-tool-head"
+                    onClick={() => toggleExpand(key)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <span className="trace-tool-idx">{i + 1}</span>
+                    <span className="trace-tool-name">{inv.name}</span>
+                    {inv.server && <span className="trace-tool-server">@{inv.server}</span>}
+                    {inv.isError && <span className="trace-tool-err">失败</span>}
+                    <span className="trace-tool-toggle">{exp ? "▼ 收起" : "▶ 详情"}</span>
+                  </div>
+
+                  {/* 始终显示的结果摘要行 */}
+                  <div className="trace-tool-summary">
+                    <span className="trace-sum-label">结果</span>
+                    <span className={`trace-sum-val${inv.isError ? " err" : ""}`}>
+                      {summarize(inv.result)}
+                    </span>
+                  </div>
+
+                  {/* 展开后显示完整入参+返回 */}
+                  {exp && (
+                    <>
+                      <div className="trace-sub">
+                        入参
+                        <CopyButton text={JSON.stringify(inv.args ?? {}, null, 2)} />
+                      </div>
+                      <pre className="trace-code">{JSON.stringify(inv.args ?? {}, null, 2)}</pre>
+                      <div className="trace-sub">
+                        返回（完整）
+                        <CopyButton text={typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)} />
+                      </div>
+                      <pre className={`trace-code${inv.isError ? " err" : ""}`}>
+                        {typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)}
+                      </pre>
+                    </>
+                  )}
                 </div>
-                <div className="trace-sub">
-                  入参
-                  <CopyButton text={JSON.stringify(inv.args ?? {}, null, 2)} />
-                </div>
-                <pre className="trace-code">{JSON.stringify(inv.args ?? {}, null, 2)}</pre>
-                <div className="trace-sub">
-                  返回
-                  <CopyButton text={typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)} />
-                </div>
-                <pre className={`trace-code${inv.isError ? " err" : ""}`}>
-                  {typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)}
-                </pre>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </details>

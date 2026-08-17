@@ -1,4 +1,4 @@
-import { STATUS_META, fmtTime, LoadingDots } from "./shared.jsx";
+import { STATUS_META, fmtTime } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -8,7 +8,6 @@ import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
   const meta = (trace && STATUS_META[trace.status]) || STATUS_META.sending;
   const t = trace || {};
-  const streaming = t.status === "streaming" || t.status === "sending";
 
   return (
     <FloatingPanel
@@ -40,9 +39,6 @@ export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
             <div className="k">当前密钥</div>
             <div className="v mag">{t.key ? t.key.label : "—"}</div>
           </div>
-          {streaming && (
-            <LoadingDots label={t.status === "sending" ? "已发送，等待模型首个 token…" : "正在接收流式输出…"} />
-          )}
         </div>
       </details>
     </FloatingPanel>

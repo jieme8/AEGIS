@@ -20,8 +20,7 @@ export const DEV_NAMES = {
   "mcp-toggle": "MCP 切换按钮",
   "dev-legend": "组件清单面板",
   "trace-request-status": "对话流-01请求状态",
-  "trace-context": "对话流-02附加上下文",
-  "trace-prompt": "对话流-03提示词",
+  "trace-prompt": "对话流-03提示词+上下文",
   "trace-reasoning": "对话流-04思考过程",
   "trace-mcp-tools": "对话流-05工具调用",
 };
@@ -32,5 +31,5 @@ export const DEV_GROUPS = [
   { title: "HUD 面板", ids: ["hud-bl", "task-bar"] },
   { title: "背景特效（不可移动）", ids: ["fx-ring", "fx-grid", "fx-data-rain", "fx-scanlines", "fx-vignette", "fx-glitch"] },
   { title: "数据面板 / 浮层", ids: ["oil-price-panel", "mcp-panel", "mcp-toggle", "dev-legend"] },
-  { title: "模型对话过程（独立浮层）", ids: ["trace-request-status", "trace-context", "trace-prompt", "trace-reasoning", "trace-mcp-tools"] },
+  { title: "模型对话过程（独立浮层）", ids: ["trace-request-status", "trace-prompt", "trace-reasoning", "trace-mcp-tools"] },
 ];

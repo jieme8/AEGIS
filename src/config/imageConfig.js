@@ -31,7 +31,9 @@ export const IMAGE_CONFIG = {
   optimizer: "llm",
 
   // 调用参数
-  timeoutMs: 30000,
+  // 注意：本环境到生图服务端的网络较慢，SenseNova 冷启 ~40-60s、Agnes ~30s，
+  // 故超时设 120s，避免 AbortController 在生图完成前中断（否则慢模型"一直失败"）。
+  timeoutMs: 120000,
   retries: 2,
 
   // http provider 的同源代理路径（vite 代理 + 服务端 image-proxy 共用）

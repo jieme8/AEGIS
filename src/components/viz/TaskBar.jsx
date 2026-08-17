@@ -6,12 +6,13 @@ import { useEffect, useState } from "react";
 // 以隐藏触发器形式渲染），调试开关挂在 window.toggleDevMode 上，三者原按钮已从
 // HUD / 页面移除，改由本任务栏统一承载。
 const TASKS = [
-  { id: "task-chat",    label: "对话", icon: "▸", onClick: () => document.getElementById("openChat")?.click() },
-  { id: "task-mcp",     label: "MCP",  icon: "▣", onClick: () => document.getElementById("openMcp")?.click() },
+  { id: "task-chat",    label: "对话", icon: "▸", onClick: () => document.getElementById("openChat")?.click(), selfActive: true },
+  { id: "task-mcp",     label: "MCP",  icon: "▣", onClick: () => document.getElementById("openMcp")?.click(), selfActive: true },
   { id: "task-dev",     label: "调试", icon: "⚙", onClick: () => window.toggleDevMode?.(), selfActive: true },
+  { id: "task-settings", label: "设置", icon: "◫", selfActive: true },
 ];
 
-export function TaskBar({ active, onActivate }) {
+export function TaskBar({ active, onActivate, onOpenSettings, settingsOpen }) {
   // 调试按钮反映真实 dev-mode 状态（其他按钮沿用选中态）
   const [devOn, setDevOn] = useState(false);
   useEffect(() => {
@@ -27,7 +28,9 @@ export function TaskBar({ active, onActivate }) {
       <span className="tb-label">TASK</span>
       <div className="tb-items">
         {TASKS.map((t, i) => {
-          const isActive = t.selfActive ? devOn : active === t.id;
+          const isActive = t.id === "task-settings"
+            ? settingsOpen
+            : (t.selfActive ? devOn : active === t.id);
           return (
             <button
               key={t.id}
@@ -35,6 +38,7 @@ export function TaskBar({ active, onActivate }) {
               type="button"
               className={"tb-btn" + (isActive ? " active" : "")}
               onClick={() => {
+                if (t.id === "task-settings") { onOpenSettings?.(); return; }
                 t.onClick?.();
                 if (!t.selfActive) onActivate?.(active === t.id ? null : t.id);
               }}

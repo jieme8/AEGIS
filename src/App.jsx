@@ -10,8 +10,8 @@ import {
 } from "./components/background/Background.jsx";
 import { SpectrumCanvas } from "./components/viz/SpectrumCanvas.jsx";
 import { TitleBar } from "./components/viz/TitleBar.jsx";
-import { ProviderSwitcher } from "./components/viz/ProviderSwitcher.jsx";
 import { FormSwitchButtons } from "./components/viz/FormSwitchButtons.jsx";
+import { SettingsPanel } from "./components/viz/SettingsPanel.jsx";
 import { TaskBar } from "./components/viz/TaskBar.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
 import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
@@ -50,6 +50,8 @@ export default function App() {
   // MCP 浮层默认开启：按需求直接展示服务器列表（不再默认隐藏）。
   const [mcpOpen, setMcpOpen] = useState(true);
   const [activeTask, setActiveTask] = useState(null);
+  // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     // 注入各组件入场时序变量（--delay/--dur/--ease），由 CSS 消费
@@ -75,6 +77,13 @@ export default function App() {
     return () => window.removeEventListener("jarvis:image-start", onStart);
   }, []);
 
+  // 清空对话时关闭所有面板（配图窗等）
+  useEffect(() => {
+    const onCloseAll = () => setActiveTask(null);
+    window.addEventListener("jarvis:close-all-panels", onCloseAll);
+    return () => window.removeEventListener("jarvis:close-all-panels", onCloseAll);
+  }, []);
+
   // 点击遮罩跳过启动（提前进入主界面）
   const skip = () => {
     if (booted) return;
@@ -98,7 +107,6 @@ export default function App() {
 
       {/* 顶部标题 + 形态切换 + 黑客数据流 */}
       <TitleBar />
-      <ProviderSwitcher />
       <FormSwitchButtons />
       <HackerStreamZone />
 
@@ -135,6 +143,9 @@ export default function App() {
       {/* 独立配图窗口：生图结果渲染在这里，不再挤进聊天框 */}
       <ImageWindow open={activeTask === "task-image"} onClose={() => setActiveTask(null)} />
 
+      {/* 设置窗口：语言模型 / 生图模型 / 生图比例 三个切换器迁入此处 */}
+      <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+
       {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}
       <div className="oil-dock">
         <OilPricePanel
@@ -146,7 +157,12 @@ export default function App() {
       </div>
 
       {/* 底部任务栏：一个按钮 = 一个功能 / 组件入口 */}
-      <TaskBar active={activeTask} onActivate={setActiveTask} />
+      <TaskBar
+        active={activeTask}
+        onActivate={setActiveTask}
+        onOpenSettings={() => setSettingsOpen(true)}
+        settingsOpen={settingsOpen}
+      />
 
       {/* 调试覆盖层（组件 ID 标注 / 清单 / 复制） */}
       <DevOverlay />

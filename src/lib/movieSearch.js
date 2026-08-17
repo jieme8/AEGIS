@@ -19,14 +19,61 @@
 export const MOVIE_SEARCH_KEYWORD = "影视搜索";
 export const MOVIE_SEARCH_PREFIX = "@" + MOVIE_SEARCH_KEYWORD; // "@影视搜索"
 
-// —— 已知资源站点（知识库直连层，阶段零）——
-const KB_SITES = [
+/**
+ * @ 指令快捷列表（供输入框「输入 @ 弹出下拉」使用）。
+ * 未来新增 @ 命令时，只需在此数组追加一项即可，输入框下拉会自动包含。
+ *   - id     : 唯一标识
+ *   - label  : 下拉中展示的指令文本（通常以 @ 开头）
+ *   - desc   : 下拉中展示的简短说明
+ *   - insert : 选中后插入输入框的文本（一般末尾带一个空格，方便继续输入参数）
+ *   - match  : 校验「插入后用户发的消息」是否属于该指令（与 parseCommand 共用约定）
+ */
+export const AT_COMMANDS = [
   {
-    name: "枫叶网 fx57.cn",
-    base: "https://www.fx57.cn/?s=",
-    desc: "动漫专站，更新及时，含国语配音与中文字幕；点击直达站点检索页。",
+    id: "movie-search",
+    label: MOVIE_SEARCH_PREFIX,        // "@影视搜索"
+    desc: "实时检索影视资源的磁力 / 网盘直链",
+    insert: MOVIE_SEARCH_PREFIX + " ", // "@影视搜索 "
   },
 ];
+
+// —— 一键复制（供结果卡片内联按钮调用；含 execCommand 兜底，localhost 安全上下文下可用）——
+if (typeof window !== "undefined") {
+  window.__copyMovieLink = (btn, text) => {
+    const restore = () => {
+      const o = btn.getAttribute("data-label") || "复制";
+      btn.textContent = o;
+    };
+    const done = () => {
+      btn.textContent = "已复制";
+      setTimeout(restore, 1500);
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(done, () => fallbackCopy(text, done));
+      } else {
+        fallbackCopy(text, done);
+      }
+    } catch {
+      fallbackCopy(text, done);
+    }
+  };
+  function fallbackCopy(text, done) {
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      done();
+    } catch {
+      /* 忽略 */
+    }
+  }
+}
 
 // —— 通用搜索引擎（阶段一）——
 const SEARCH_ENGINES = [
@@ -121,15 +168,6 @@ function ratingClass(rating) {
 export function buildSearchGroups(query) {
   const q = query;
 
-  const kbItems = KB_SITES.map((s) => ({
-    title: s.name,
-    url: safeUrl(s.base + enc(q)),
-    rating: "良好",
-    meta: s.desc,
-    flags: [],
-    source: s.name,
-  }));
-
   const engineItems = SEARCH_ENGINES.map((e) => ({
     title: `${e.name} · 综合精准检索`,
     url: safeUrl(e.base + enc(q + (e.suffix || ""))),
@@ -159,26 +197,20 @@ export function buildSearchGroups(query) {
 
   return [
     {
-      kind: "kb",
-      title: "阶段零 · 知识库直连",
-      note: "已知专业资源站点，直达检索（优先于通用搜索）。",
-      items: kbItems,
-    },
-    {
       kind: "engine",
-      title: "阶段一 · 通用搜索引擎",
-      note: "已预填精准关键词，点击可在新标签查看结果。",
+      title: "手动检索入口 · 通用搜索",
+      note: "已预填精准关键词，点击在新标签查看结果。",
       items: engineItems,
     },
     {
       kind: "magnet",
-      title: "阶段三 · 磁力 / BT 聚合",
+      title: "手动检索入口 · 磁力 / BT 聚合",
       note: "磁力链接聚合索引，结果需自行核对做种与完整性。",
       items: magnetItems,
     },
     {
       kind: "cloud",
-      title: "阶段三 · 网盘 / 云资源",
+      title: "手动检索入口 · 网盘 / 云资源",
       note: "云盘资源检索入口。",
       items: cloudItems,
     },
@@ -190,8 +222,8 @@ function buildFallbackResult(query) {
     query,
     keyword: MOVIE_SEARCH_KEYWORD,
     summary:
-      "未连接到实时检索代理，以下仅为检索入口（无法返回真实网页结果）。" +
-      "请运行 `npm run dev:all`（而非仅 `npm run dev`）以启用真实检索，或手动点击下列入口检索。",
+      "未连接到实时检索代理，以下仅为手动检索入口（无法返回真实磁链 / 网盘地址）。" +
+      "请确认影视搜索代理已启动：运行 `npm run dev` 会自动拉起代理；若仍离线，检查 8789 端口是否被占用。",
     generatedAt: new Date().toISOString(),
     groups: buildSearchGroups(query),
     tips: [
@@ -214,7 +246,7 @@ function buildFallbackResult(query) {
  * @param {{timeoutMs?:number}} [opts]
  * @returns {Promise<object>} 结构化结果（与 buildSearchGroups 同向）
  */
-export async function searchMovies(query, { timeoutMs = 8000 } = {}) {
+export async function searchMovies(query, { timeoutMs = 15000 } = {}) {
   const fallback = buildFallbackResult(query);
   try {
     const ctrl = new AbortController();
@@ -266,38 +298,21 @@ export function renderMovieResults(result) {
   const q = escapeHtml(result.query || "");
   const summary = escapeHtml(result.summary || "");
   const liveBadge = result.live
-    ? '<span class="ms-live">● 含实时检索结果</span>'
+    ? '<span class="ms-live">● 含实时直链</span>'
     : '<span class="ms-offline">● 离线 · 仅检索入口</span>';
 
+  // 直链分组（磁力 / 网盘）置顶且按 kind 渲染为「完整明文 + 一键复制」
   const groupsHtml = (result.groups || [])
     .map((g) => {
       const title = escapeHtml(g.title || "");
       const note = escapeHtml(g.note || "");
+      const isDirect = g.kind === "magnet" || g.kind === "pan";
       const itemsHtml = (g.items || [])
-        .map((it) => {
-          const url = safeUrl(it.url);
-          const href = url || "#";
-          const titleEsc = escapeHtml(it.title || "");
-          const metaEsc = escapeHtml(it.meta || "");
-          const rating = escapeHtml(it.rating || "需验证");
-          const rc = ratingClass(it.rating);
-          const flags = (it.flags || [])
-            .map((f) => `<span class="ms-flag">${escapeHtml(f)}</span>`)
-            .join("");
-          const target = url ? ' target="_blank" rel="noopener noreferrer"' : "";
-          return (
-            `<li class="ms-item">` +
-            `<a class="ms-link" href="${escapeHtml(href)}"${target}>${titleEsc}</a>` +
-            `<span class="ms-rating ${rc}">${rating}</span>` +
-            (metaEsc ? `<div class="ms-meta">${metaEsc}</div>` : "") +
-            (flags ? `<div class="ms-flags">${flags}</div>` : "") +
-            `</li>`
-          );
-        })
+        .map((it) => (isDirect ? renderDirectItem(it) : renderLinkItem(it)))
         .join("");
       return (
-        `<div class="ms-group">` +
-        `<div class="ms-gtitle">${title}</div>` +
+        `<div class="ms-group ms-group-${escapeHtml(g.kind)}">` +
+        `<div class="ms-gtitle">${title}<span class="ms-count">${g.items ? g.items.length : 0}</span></div>` +
         (note ? `<div class="ms-gnote">${note}</div>` : "") +
         `<ul class="ms-items">${itemsHtml}</ul>` +
         `</div>`
@@ -305,12 +320,8 @@ export function renderMovieResults(result) {
     })
     .join("");
 
-  const tipsHtml = (result.tips || [])
-    .map((t) => `<li>${escapeHtml(t)}</li>`)
-    .join("");
-  const warnsHtml = (result.warnings || [])
-    .map((w) => `<li>${escapeHtml(w)}</li>`)
-    .join("");
+  const tipsHtml = (result.tips || []).map((t) => `<li>${escapeHtml(t)}</li>`).join("");
+  const warnsHtml = (result.warnings || []).map((w) => `<li>${escapeHtml(w)}</li>`).join("");
 
   return (
     `<div class="movie-search">` +
@@ -320,5 +331,43 @@ export function renderMovieResults(result) {
     (tipsHtml ? `<div class="ms-tips"><div class="ms-sect">💡 下载建议</div><ul>${tipsHtml}</ul></div>` : "") +
     (warnsHtml ? `<div class="ms-warns"><div class="ms-sect">⚠️ 验证提示</div><ul>${warnsHtml}</ul></div>` : "") +
     `</div>`
+  );
+}
+
+/** 直链项（磁力 / 网盘）：完整明文 + 提取码（若有）+ 一键复制。 */
+function renderDirectItem(it) {
+  const url = safeUrl(it.url);
+  const href = url || "#";
+  const target = url ? ' target="_blank" rel="noopener noreferrer"' : "";
+  const isPan = it.kind === "pan";
+  const linkText = escapeHtml(it.url); // 完整明文（磁链 / 网盘地址），可见可复制
+  const copyAttr = escapeHtml(it.url);
+  const codeLine = it.code
+    ? `<div class="ms-code">提取码：<b>${escapeHtml(it.code)}</b></div>`
+    : "";
+  const rating = escapeHtml(it.rating || "需验证");
+  const rc = ratingClass(it.rating);
+  return (
+    `<li class="ms-item ms-direct">` +
+    `<a class="ms-link ${isPan ? "ms-pan" : "ms-magnet"}" href="${escapeHtml(href)}"${target}>${linkText}</a>` +
+    `<span class="ms-copy" data-label="复制" data-copy="${copyAttr}" onclick="window.__copyMovieLink(this, this.getAttribute('data-copy'))">复制</span>` +
+    `<span class="ms-rating ${rc}">${rating}</span>` +
+    codeLine +
+    `</li>`
+  );
+}
+
+/** 普通入口项（搜索引擎 / 聚合站 / 资源页）：仅作点击链接。 */
+function renderLinkItem(it) {
+  const url = safeUrl(it.url);
+  const href = url || "#";
+  const target = url ? ' target="_blank" rel="noopener noreferrer"' : "";
+  const titleEsc = escapeHtml(it.title || url);
+  const metaEsc = escapeHtml(it.meta || "");
+  return (
+    `<li class="ms-item">` +
+    `<a class="ms-link" href="${escapeHtml(href)}"${target}>${titleEsc}</a>` +
+    (metaEsc ? `<div class="ms-meta">${metaEsc}</div>` : "") +
+    `</li>`
   );
 }

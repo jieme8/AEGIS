@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useChatController } from "../../hooks/useChatController.js";
 import { TracePanels } from "./TracePanels.jsx";
 
@@ -44,7 +45,7 @@ export function ChatComposer() {
         className="chat-input"
         id="chatInput"
         rows={1}
-        placeholder="输入消息… 或 @影视搜索 流浪地球 检索影视资源 · Enter 发送"
+        placeholder="输入消息… 输入 @ 唤起指令 · Enter 发送"
       />
       <button className="chat-send" id="chatSend" type="submit" aria-label="发送" disabled>
         <svg viewBox="0 0 24 24"><path d="M3 20.5 21 12 3 3.5 3 10l12 2-12 2z" /></svg>
@@ -64,7 +65,13 @@ export function ResizeHandles() {
 }
 
 export function ChatPanel({ imageOpen, onToggleImage }) {
-  const { trace, traceOpen, closeTrace, toggleTrace, panelOpen } = useChatController();
+  const { trace, traceOpen, closeTrace, toggleTrace, openTrace, panelOpen } = useChatController();
+
+  // image-window 与对话流联动：打开配图窗口时，对话流浮层也一并显示
+  useEffect(() => {
+    if (imageOpen) openTrace();
+  }, [imageOpen, openTrace]);
+
   return (
     <>
       <aside

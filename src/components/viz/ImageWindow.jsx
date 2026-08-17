@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { IMAGE_CONFIG } from "../../config/imageConfig.js";
+import { imageProviderManager } from "../../lib/imageProviderManager.js";
 
 // 独立「AI 配图窗口」：经 Portal 挂到 body，不受聊天面板限制，可在整页任意拖动。
 // 与主对话解耦 —— 生图结果不再写进 chat-panel，而是由 imagePipeline 通过事件推流进来：
@@ -50,7 +50,25 @@ function openLightbox(url, prompt, meta) {
   const cap = document.createElement("div");
   cap.className = "img-lightbox-cap";
   const metaLine = [meta && meta.model, meta && meta.revised_prompt].filter(Boolean).join(" · ");
-  cap.textContent = (prompt || "AI 生成配图") + (metaLine ? "\n" + metaLine : "");
+  const overlayText = meta && meta.overlayText;
+
+  const title = document.createElement("div");
+  title.textContent = prompt || "AI 生成配图";
+  cap.appendChild(title);
+
+  if (metaLine) {
+    const metaEl = document.createElement("div");
+    metaEl.className = "lb-meta";
+    metaEl.textContent = metaLine;
+    cap.appendChild(metaEl);
+  }
+  if (overlayText) {
+    const ov = document.createElement("pre");
+    ov.className = "lb-overlay";
+    ov.textContent = overlayText;
+    cap.appendChild(ov);
+  }
+
   fig.appendChild(img);
   fig.appendChild(cap);
   ov.appendChild(fig);
@@ -87,6 +105,7 @@ export function ImageWindow({ open, onClose }) {
   const boxRef = useRef(null);
   const bodyRef = useRef(null);
   const [dragging, setDragging] = useState(false);
+  const [resizing, setResizing] = useState(false);
   const [items, setItems] = useState([]);
   const [copiedId, setCopiedId] = useState(null);
 
@@ -180,6 +199,28 @@ export function ImageWindow({ open, onClose }) {
     e.preventDefault();
   };
 
+  // 底部 resize 拖拽：调整窗口高度
+  const onResizePointerDown = (e) => {
+    const box = boxRef.current;
+    if (!box) return;
+    const startY = e.clientY;
+    const origH = box.offsetHeight;
+    setResizing(true);
+    const onMove = (ev) => {
+      const dy = ev.clientY - startY;
+      const newH = Math.max(200, Math.min(window.innerHeight - 100, origH + dy));
+      box.style.height = newH + "px";
+    };
+    const onUp = () => {
+      setResizing(false);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    e.preventDefault();
+  };
+
   if (!open) return null;
 
   const done = items.filter((i) => i.status === "ready").length;
@@ -200,13 +241,13 @@ export function ImageWindow({ open, onClose }) {
   return createPortal(
     <div
       ref={boxRef}
-      className={"image-window" + (dragging ? " dragging" : "")}
+      className={"image-window" + (dragging ? " dragging" : "") + (resizing ? " resizing" : "")}
       role="dialog"
       aria-label="AI 配图窗口"
       data-dev-id="image-window"
     >
       <div className="iw-head" onPointerDown={onHeadPointerDown}>
-        <span className="iw-title">AI 配图窗口 · IMAGE GEN</span>
+        <span className="iw-title">AI 配图窗口</span>
         <span className="iw-count">
           {done} 张{pending ? ` · ${pending} 生成中` : ""}
         </span>
@@ -218,9 +259,17 @@ export function ImageWindow({ open, onClose }) {
       <div className="iw-body" ref={bodyRef}>
         {items.length === 0 && (
           <div className="iw-empty">
-            （还没有生成的配图）
-            <br />
-            当助手回答「值得生图」时，配图会自动出现在这里，不再挤进聊天框。
+            <svg className="iw-empty-icon" viewBox="0 0 64 64" aria-hidden="true">
+              <rect x="8" y="14" width="48" height="36" rx="5" />
+              <circle cx="22" cy="28" r="5" />
+              <path d="M12 46 L26 32 L36 42 L44 34 L52 46" />
+            </svg>
+            <div className="iw-empty-title">暂无配图</div>
+            <div className="iw-empty-hint">
+              当助手判断回答「值得生图」时，<br />
+              AI 生成的配图会自动出现在这里，<br />
+              不再挤进聊天框。
+            </div>
           </div>
         )}
 
@@ -235,7 +284,7 @@ export function ImageWindow({ open, onClose }) {
                 <div className="iw-gen-status">
                   <span className="iw-spinner" />
                   <span className="iw-gen-text">正在生成配图</span>
-                  <span className="iw-gen-model">{IMAGE_CONFIG.providerName}</span>
+                  <span className="iw-gen-model">{imageProviderManager.getActive()?.label || "生图模型"}</span>
                 </div>
                 <PromptBlock
                   prompt={it.prompt}
@@ -306,6 +355,7 @@ export function ImageWindow({ open, onClose }) {
           </div>
         ))}
       </div>
+      <div className="iw-resize" onPointerDown={onResizePointerDown} title="拖动调整高度" />
     </div>,
     document.body
   );

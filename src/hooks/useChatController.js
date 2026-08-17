@@ -13,6 +13,7 @@ import {
   searchMovies,
   renderMovieResults,
   MOVIE_SEARCH_PREFIX,
+  AT_COMMANDS,
 } from "../lib/movieSearch.js";
 
 /**
@@ -58,6 +59,56 @@ function copyText(text, btn) {
     } catch (e) { /* 忽略 */ }
     done();
   }
+}
+
+// URL 正则：匹配 http/https 开头的链接
+const URL_RE = /(https?:\/\/[^\s<>"'){}|\\^[\]`]+)/g;
+
+/**
+ * 将 bubble-text 中的裸 URL 包装为可一键复制的 <span class="chat-url">
+ * 每个 URL 旁带一个小复制图标，点击仅复制该 URL（不影响整段复制）。
+ * 仅对 AI 气泡执行（用户发的消息通常不含 URL）。
+ */
+function wrapUrls(bubble) {
+  const textNode = bubble.querySelector(".bubble-text");
+  if (!textNode) return;
+  const text = textNode.textContent;
+  if (!URL_RE.test(text)) return;                   // 无 URL，跳过
+  URL_RE.lastIndex = 0;
+  const frag = document.createDocumentFragment();
+  let last = 0;
+  let m;
+  while ((m = URL_RE.exec(text)) !== null) {
+    // URL 前的普通文本
+    if (m.index > last) {
+      const t = document.createTextNode(text.slice(last, m.index));
+      frag.appendChild(t);
+    }
+    // URL 包装容器
+    const urlWrap = document.createElement("span");
+    urlWrap.className = "chat-url";
+    const urlText = document.createTextNode(m[1]);
+    urlWrap.appendChild(urlText);
+
+    // URL 专属小复制按钮
+    const urlBtn = document.createElement("span");
+    urlBtn.className = "chat-url-copy";
+    urlBtn.title = "复制链接";
+    urlBtn.innerHTML = COPY_ICON;               // 复用 SVG 常量
+    urlBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      copyText(m[1], urlBtn);
+    });
+    urlWrap.appendChild(urlBtn);
+    frag.appendChild(urlWrap);
+    last = m.index + m[1].length;
+  }
+  // 尾部普通文本
+  if (last < text.length) {
+    frag.appendChild(document.createTextNode(text.slice(last)));
+  }
+  // 替换原文本节点
+  textNode.replaceWith(frag);
 }
 
 // 给气泡挂一个「复制」图标按钮（绝对定位在气泡内右上角，hover 浮现）
@@ -155,8 +206,7 @@ export function useChatController() {
       });
     }
 
-    // ============ 可拖拽 / 可缩放 / 布局持久化（DialogController） ============
-    const LS_LAYOUT = "cyber-chat-layout-v2";
+    // ============ 可拖拽 / 可缩放（DialogController） ============
     const MIN_W = 320, MIN_H = 240;
     const dragHandle = document.getElementById("chatDragHandle");
     const resizeHandles = panel ? panel.querySelectorAll(".resize-handle") : [];
@@ -184,17 +234,7 @@ export function useChatController() {
       return { x: r.left, y: r.top, w: r.width, h: r.height };
     }
 
-    // --- 持久化（LayoutPersistence） ---
-    function saveLayout() {
-      try { localStorage.setItem(LS_LAYOUT, JSON.stringify(getRect())); } catch (e) { /* 忽略 */ }
-    }
-    function loadLayout() {
-      try {
-        const raw = localStorage.getItem(LS_LAYOUT);
-        if (raw) { const o = JSON.parse(raw); if (o && typeof o.x === "number") return o; }
-      } catch (e) { /* 忽略 */ }
-      return null;
-    }
+    // --- 默认几何（不持久化：每次刷新回归默认坐标与尺寸） ---
     function defaultRect() {
       // 默认位置固定为 (1300, 80)；尺寸仍随视口收敛，避免极小窗口溢出。
       const vw = window.innerWidth, vh = window.innerHeight;
@@ -228,7 +268,6 @@ export function useChatController() {
       drag = null;
       if (panel) panel.classList.remove("dragging");
       window.removeEventListener("pointermove", onDragMove);
-      saveLayout();
     }
 
     // --- 缩放（ResizeController）---
@@ -258,7 +297,6 @@ export function useChatController() {
       rz = null;
       if (panel) panel.classList.remove("resizing");
       window.removeEventListener("pointermove", onResizeMove);
-      saveLayout();
     }
 
     // --- 初始化几何 + 绑定事件（含移动端降级）---
@@ -267,7 +305,7 @@ export function useChatController() {
         || window.innerWidth <= 640;
     }
     function initLayout() {
-      applyRect(loadLayout() || defaultRect());
+      applyRect(defaultRect());
     }
 
     // 桌面端：拖拽/缩放仅在 dev-mode（显示组件ID）时启用，退出即锁定
@@ -304,7 +342,7 @@ export function useChatController() {
       syncPanelDragMode();
       onDevModeChange(syncPanelDragMode);
       // 视口变化时重新约束面板位置/尺寸，防止越界
-      window.addEventListener("resize", function () { applyRect(getRect()); saveLayout(); });
+      window.addEventListener("resize", function () { applyRect(getRect()); });
     }
 
     const fmtTime = (ts) =>
@@ -352,6 +390,8 @@ export function useChatController() {
       wrap.appendChild(bubble);
       // 一键复制：AI 回复与用户发送内容都支持（历史/新发一致）
       attachCopyButton(bubble, cls === "user" ? "复制内容" : "复制回复");
+      // AI 消息中的 URL 包装为可一键复制的链接
+      if (cls === "ai") wrapUrls(bubble);
       messagesEl.appendChild(wrap);
 
       state.history.push({ role, text, time: ts });
@@ -646,8 +686,13 @@ export function useChatController() {
 
       // 执行单个 MCP 工具（经 Relay）；错误向上抛，由 agentLoop 兜底回填
       async function executeTool(name, args, callId) {
-        const r = await mcpClient.callTool(name, args);
-        return { content: r.content, isError: r.isError };
+        window.dispatchEvent(new CustomEvent("jarvis:mcp-tool-start", { detail: { name } }));
+        try {
+          const r = await mcpClient.callTool(name, args);
+          return { content: r.content, isError: r.isError };
+        } finally {
+          window.dispatchEvent(new CustomEvent("jarvis:mcp-tool-end", { detail: { name } }));
+        }
       }
 
       try {
@@ -732,6 +777,118 @@ export function useChatController() {
       if (!state.busy) sendBtn.disabled = input.value.trim() === "";
     }
 
+    // 转义动态文本，避免下拉内容注入
+    function escapeHtml(s) {
+      return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    // —— @ 指令快捷下拉（输入 @ 自动弹出，↑/↓ 切换，Enter/Tab 选中，Esc 关闭）——
+    let cmdPickerEl = null;
+    let cmdPickerOpen = false;
+    let cmdHighlight = 0;
+    let cmdMatches = [];
+
+    // 命令模式：输入框以 @ 开头且尚未出现空格（即仍在输入指令 token）
+    function getCommandQuery() {
+      const v = input.value;
+      if (!/^@[^\s]*$/.test(v)) return null;
+      return v.slice(1).toLowerCase();
+    }
+
+    function setupCommandPicker() {
+      if (cmdPickerEl) return;
+      const el = document.createElement("div");
+      el.className = "cmd-picker";
+      el.id = "cmdPicker";
+      el.setAttribute("role", "listbox");
+      el.setAttribute("aria-label", "可用指令");
+      el.style.display = "none";
+      form.appendChild(el);
+      cmdPickerEl = el;
+    }
+
+    function renderPicker() {
+      if (!cmdPickerEl) return;
+      if (!cmdMatches.length) {
+        cmdPickerEl.innerHTML = '<div class="cmd-empty">无匹配的 @ 指令</div>';
+        return;
+      }
+      cmdPickerEl.innerHTML = cmdMatches
+        .map((c, i) => {
+          const active = i === cmdHighlight ? " active" : "";
+          return (
+            '<div class="cmd-item' + active + '" role="option"' +
+            ' data-idx="' + i + '" aria-selected="' + (i === cmdHighlight) + '">' +
+            '<span class="cmd-label">' + escapeHtml(c.label) + "</span>" +
+            '<span class="cmd-desc">' + escapeHtml(c.desc) + "</span>" +
+            "</div>"
+          );
+        })
+        .join("");
+      cmdPickerEl.querySelectorAll(".cmd-item").forEach((node) => {
+        const idx = Number(node.getAttribute("data-idx"));
+        node.addEventListener("mouseenter", () => {
+          cmdHighlight = idx;
+          renderPicker();
+        });
+        node.addEventListener("mousedown", (e) => {
+          e.preventDefault(); // 防止 textarea 失焦
+          selectHighlighted();
+        });
+      });
+    }
+
+    function openPicker() {
+      setupCommandPicker();
+      const q = getCommandQuery() || "";
+      cmdMatches = AT_COMMANDS.filter(
+        (c) =>
+          c.label.toLowerCase().includes(q) ||
+          c.desc.toLowerCase().includes(q)
+      );
+      cmdHighlight = 0;
+      cmdPickerOpen = true;
+      cmdPickerEl.style.display = "block";
+      renderPicker();
+    }
+
+    function closePicker() {
+      cmdPickerOpen = false;
+      if (cmdPickerEl) cmdPickerEl.style.display = "none";
+    }
+
+    // 每次输入后同步：处于命令模式则刷新下拉，否则收起
+    function syncPicker() {
+      if (getCommandQuery() !== null) openPicker();
+      else closePicker();
+    }
+
+    function moveHighlight(delta) {
+      if (!cmdMatches.length) return;
+      cmdHighlight =
+        (cmdHighlight + delta + cmdMatches.length) % cmdMatches.length;
+      renderPicker();
+      const active = cmdPickerEl.querySelector(".cmd-item.active");
+      if (active) active.scrollIntoView({ block: "nearest" });
+    }
+
+    function selectHighlighted() {
+      const cmd = cmdMatches[cmdHighlight];
+      closePicker();
+      if (!cmd) return;
+      input.value = cmd.insert; // 例如 "@影视搜索 "
+      input.focus();
+      const len = input.value.length;
+      input.setSelectionRange(len, len);
+      autoGrow();
+      updateSend();
+    }
+
     function setChat(open) {
       // 开合交由 React 状态（panelOpen）驱动 className / aria-hidden，
       // 不再手动操作 DOM class，避免组件重渲染时 JSX 的 className 把 open 写回。
@@ -743,17 +900,17 @@ export function useChatController() {
     }
     function toggleChat() { setChat(!panel.classList.contains("open")); }
 
-    // 清空上下文：重置内存历史 + 清空 DOM 消息 + 清除本地持久化；trace 一并复位
+    // 清空上下文：重置内存历史 + 清空 DOM 消息 + 清除本地持久化；trace + 配图窗一并关闭
     function clearChat() {
       if (state.busy) return;
       if (state.history.length === 0 && messagesEl.childElementCount === 0) return;
-      const ok = window.confirm("确定要清空当前对话上下文吗？此操作不可撤销。");
-      if (!ok) return;
       state.history = [];
       messagesEl.innerHTML = "";
       try { localStorage.removeItem(CONFIG.storageKey); } catch (e) { /* 忽略 */ }
       setTrace(null);
       setTraceOpen(false);
+      // 通知 App.jsx 关闭配图窗口（image-window）
+      window.dispatchEvent(new CustomEvent("jarvis:close-all-panels"));
       if (clearBtn) clearBtn.disabled = true;
       updateSend();
     }
@@ -768,13 +925,25 @@ export function useChatController() {
       closeBtn.addEventListener("click", () => setChat(false));
       if (clearBtn) clearBtn.addEventListener("click", clearChat);
       form.addEventListener("submit", (e) => { e.preventDefault(); handleSend(); });
-      input.addEventListener("input", () => { autoGrow(); updateSend(); });
+      input.addEventListener("input", () => { autoGrow(); updateSend(); syncPicker(); });
       input.addEventListener("keydown", (e) => {
+        // 下拉打开时，方向键 / Enter / Tab / Esc 优先用于选择指令
+        if (cmdPickerOpen) {
+          if (e.key === "ArrowDown") { e.preventDefault(); moveHighlight(1); return; }
+          if (e.key === "ArrowUp") { e.preventDefault(); moveHighlight(-1); return; }
+          if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+            e.preventDefault(); selectHighlighted(); return;
+          }
+          if (e.key === "Tab") { e.preventDefault(); selectHighlighted(); return; }
+          if (e.key === "Escape") { e.preventDefault(); closePicker(); return; }
+        }
         if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
           e.preventDefault();
           handleSend();
         }
       });
+      // 失焦时收起下拉（延迟以允许下拉项的 mousedown 选中先生效）
+      input.addEventListener("blur", () => { setTimeout(closePicker, 120); });
     }
 
     function init() {
@@ -794,5 +963,5 @@ export function useChatController() {
     init();
   }, []);
 
-  return { trace, traceOpen, closeTrace, toggleTrace, panelOpen };
+  return { trace, traceOpen, closeTrace, toggleTrace, openTrace: () => setTraceOpen(true), panelOpen };
 }
