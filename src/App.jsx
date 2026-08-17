@@ -49,7 +49,7 @@ export default function App() {
   const [bootGone, setBootGone] = useState(false);
   // MCP 浮层默认开启：按需求直接展示服务器列表（不再默认隐藏）。
   const [mcpOpen, setMcpOpen] = useState(true);
-  const [activeTask, setActiveTask] = useState(null);
+  const [activeTask, setActiveTask] = useState("task-image");
   // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -112,14 +112,9 @@ export default function App() {
 
       {/* 角落 HUD 面板（原右上 hud-tr 已并入左下 hud-bl） */}
       <Hud corner="bl" id="hud-bl">
-        <div><span className="k">SYS</span> <span className="v" id="hud-status">● LIVE</span></div>
         <div><span className="k">FPS</span> <span className="v" id="hud-fps">--</span></div>
-        <div><span className="k">MODE</span> <span className="v mag">SIM</span></div>
         <div><span className="k">ENERGY</span> <span className="v" id="hud-energy">0%</span></div>
         <div><span className="k">PEAK</span> <span className="v" id="hud-peak">0%</span></div>
-        <div><span className="k">UNIT</span> <span className="v">VX-72</span></div>
-        <div><span className="k">BANDS</span> <span className="v" id="hud-bands">72</span></div>
-        <div><span className="k">SIG</span> <span className="v mag" id="hud-sig">STREAM</span></div>
         <div><span className="k">FREQ</span> <span className="v" id="hud-freq">20–20k</span></div>
         <div><span className="k">GAIN</span> <span className="v mag">+0.0dB</span></div>
         <ScreenSizeBadge />
