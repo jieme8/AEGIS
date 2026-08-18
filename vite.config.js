@@ -89,6 +89,20 @@ export default defineConfig(({ mode }) => {
       changeOrigin: true,
       secure: true,
     },
+    // —— 影视元数据检索同源代理：浏览器走 /api/movie（免 CORS），
+    // 由 Node 侧 movie-meta.mjs（默认 8790）持有元数据检索能力，与现有 8789 完全隔离。
+    "/api/movie": {
+      target: "http://localhost:8790",
+      changeOrigin: true,
+      secure: true,
+    },
+    // —— 油价同源代理：浏览器走 /api/oil（免 CORS），由 Node 侧 oilApi.mjs
+    // （默认 8795）抓取「油价网」全国 92# 汽油真实零售价，密钥/抓取逻辑绝不进前端 bundle。
+    "/api/oil": {
+      target: "http://localhost:8795",
+      changeOrigin: true,
+      secure: true,
+    },
     // —— 生图同源代理：provider=http 时浏览器走 /api/genimg（免 CORS），
     // 密钥由 image-proxy（Node 侧，默认 8788）持有，绝不进前端 bundle。
     // 默认 local 渲染器不命中此代理；切 http 时才需启动 image-proxy。

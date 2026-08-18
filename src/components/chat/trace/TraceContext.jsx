@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
+import { sanitizeImageRefs } from "../../../lib/traceSanitize.js";
 
 /**
  * 02 · 附加上下文（独立桌面浮层）
@@ -10,6 +11,12 @@ export function TraceContext({ trace, open, onClose, index = 0 }) {
   const ctx = t.context || {};
   const history = ctx.history || [];
   const histRef = useRef(null);
+
+  // 历史里的每条文本都过滤掉 @image#N / <image_local_path> 等引用
+  const historyDisplay = history.map((m) => ({
+    ...m,
+    content: sanitizeImageRefs(m.content),
+  }));
 
   // 新历史追加时把滚动条贴到底部，始终看到最新一轮（与 trace-reasoning 思考过程一致）
   useEffect(() => {
@@ -33,7 +40,7 @@ export function TraceContext({ trace, open, onClose, index = 0 }) {
           <div className="trace-sub">历史对话（最近 {history.length} 轮，实际随请求发送）</div>
           <div className="trace-hist" ref={histRef}>
             {history.length === 0 && <div className="trace-empty">（无历史）</div>}
-            {history.map((m, i) => (
+            {historyDisplay.map((m, i) => (
               <div className={`trace-hist-item ${m.role}`} key={i}>
                 <span className="trace-role">{m.role === "user" ? "USER" : "AI"}</span>
                 <span className="trace-htext">{m.content}</span>

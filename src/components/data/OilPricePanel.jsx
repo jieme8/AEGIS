@@ -141,16 +141,20 @@ function fmtHM(date) {
 export function OilPricePanel({
   data,
   nextAdjust, // 可选：外部强制指定下次窗口；缺省时按年度表从今天动态推算
+  prevAdjust, // 可选：外部强制指定上次窗口（真实数据接入时传入，保证「上次」准确）
   forecast, // { direction: "up" | "down" | "hold", text }
   basis,
+  updatedAt, // 可选：真实数据抓取时间（ISO）；传入时「更新于」显示该时间而非系统时钟
   booted = false, // 启动序列完成后再触发数字计数入场
 }) {
   const rootRef = useRef(null);
   const now = useNow(60000); // 每分钟刷新，保证“更新于”与倒计时跟随系统时间
+  // 真实数据接入时显示抓取时间；否则（占位兜底）跟随系统时钟，保留“在线心跳”观感
+  const updatedAtDate = updatedAt ? new Date(updatedAt) : now;
 
-  // 动态调价窗口：优先用外部 nextAdjust，否则按年度表推算
+  // 动态调价窗口：优先用外部 nextAdjust/prevAdjust（真实数据接入），否则按年度表推算
   const adjustWindow = nextAdjust
-    ? { prev: null, next: nextAdjust }
+    ? { prev: prevAdjust || null, next: nextAdjust }
     : computeAdjustWindow(now);
 
   // 仅在「显示组件ID」(dev-mode) 时允许拖动油价卡。拖动作用于外层 .oil-dock
@@ -249,9 +253,11 @@ export function OilPricePanel({
       </div>
 
       <div className={`oil-chg ${up ? "oil-chg-up" : "oil-chg-down"}`}>
-        <span className="oil-arrow">{up ? "▲" : "▼"}</span>
-        <span>{Math.abs(change).toFixed(2)}</span>
-        <span className="oil-pct">({up ? "+" : "-"}{Math.abs(changePct).toFixed(2)}%)</span>
+        <span className="oil-chg-main">
+          <span className="oil-arrow">{up ? "▲" : "▼"}</span>
+          <span>{Math.abs(change).toFixed(2)}</span>
+        </span>
+        <span className="oil-chg-pct">({up ? "+" : "-"}{Math.abs(changePct).toFixed(2)}%)</span>
       </div>
 
       <div className="oil-sep" />
@@ -264,14 +270,14 @@ export function OilPricePanel({
               ? "待公布"
               : dCount <= 0
               ? "今日调价"
-              : `剩 ${dCount} 天`}
+              : `剩${dCount}天`}
             {dDay ? (
               <span className="oil-dim"> · {dDay}</span>
             ) : nextDate ? null : (
               <span className="oil-dim"> · 待官方公布</span>
             )}
             {prevDate && (
-              <span className="oil-dim">（上次 {fmtMMDD(prevDate)}）</span>
+              <span className="oil-dim"> · 上{fmtMMDD(prevDate)}</span>
             )}
           </span>
         </div>
@@ -284,7 +290,7 @@ export function OilPricePanel({
         <div className="oil-row">
           <span className="oil-k">更新</span>
           <span className="oil-v oil-dim">
-            {fmtMMDD(now)} {fmtHM(now)}
+            {fmtMMDD(updatedAtDate)} {fmtHM(updatedAtDate)}
           </span>
         </div>
       </div>

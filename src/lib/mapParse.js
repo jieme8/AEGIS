@@ -1,8 +1,8 @@
 /**
  * 高德 MCP 工具返回解析（对话自动地图标注）
  *
- * 把 maps_geo / maps_direction_* 的工具返回文本解析为地图可用的
- * {lng,lat,label} 标记 / {path, markers} 路线。纯函数，便于单测。
+ * 把 maps_geo / maps_text_search / maps_search_detail / maps_direction_* 的工具返回
+ * 文本解析为地图可用的 {lng,lat,label} 标记 / {path, markers} 路线。纯函数，便于单测。
  *
  * 坐标体系 GCJ-02，与高德 JS API 同源，直绘无偏移。
  */
@@ -10,6 +10,11 @@
 /**
  * 解析 maps_geo 返回为单个标记 {lng,lat,label}
  * 真实结构：{ "return": [ { location:"120.13,30.25", province, city, district, ... } ] }
+ *
+ * ⚠️ 注意：maps_geo 对中国知名 POI 的命中率很飘：
+ *   - maps_geo("上海东方明珠") → level:"省" 的上海市中心 (121.47, 31.23)，完全不精确
+ *   - maps_geo("东方明珠")      → 邵阳住宅区 (111.47, 27.23)
+ * 因此建议先走 parseTextSearch + parseSearchDetail 再回退 maps_geo（见 maybeShowMap）。
  */
 export function parseGeoMarker(content, label) {
   if (!content || typeof content !== "string") return null;
@@ -41,6 +46,55 @@ export function parseGeoMarker(content, label) {
     }
   }
   return null;
+}
+
+/**
+ * 解析 maps_text_search 返回，提取第一条 POI
+ * 真实结构：{ "suggestion": {...}, "pois": [ { id, name, address, typecode, ... } ] }
+ *
+ * 为什么需要这个：maps_geo 对知名 POI 返回 "省/市/住宅区" 级别的位置，完全不精确；
+ * maps_text_search 会按相关度返回真正的 POI（第一项就是东方明珠广播电视塔 / 西湖 / 外滩）。
+ * 拿到 id 后再调 maps_search_detail 即可获得精确坐标（如东方明珠塔 121.499718, 31.239703）。
+ *
+ * @returns {{id, name, address, city}|null}
+ */
+export function parseTextSearch(content) {
+  if (!content || typeof content !== "string") return null;
+  let obj = null;
+  try { obj = JSON.parse(content); } catch (e) { return null; }
+  const pois = obj && obj.pois;
+  if (!Array.isArray(pois) || pois.length === 0) return null;
+  const top = pois[0];
+  if (!top || !top.id) return null;
+  return {
+    id: top.id,
+    name: top.name || "",
+    address: top.address || "",
+    city: top.cityname || "",
+  };
+}
+
+/**
+ * 解析 maps_search_detail 返回，提取精确 location
+ * 真实结构：{ id, name, location:"121.499718,31.239703", address, business_area, type, level, ... }
+ * @returns {{lng, lat, name, address, business_area, type, label}|null}
+ */
+export function parseSearchDetail(content) {
+  if (!content || typeof content !== "string") return null;
+  let obj = null;
+  try { obj = JSON.parse(content); } catch (e) { return null; }
+  if (!obj || !obj.location) return null;
+  const parts = String(obj.location).split(",").map(Number);
+  if (parts.length !== 2 || isNaN(parts[0]) || isNaN(parts[1])) return null;
+  return {
+    lng: parts[0],
+    lat: parts[1],
+    name: obj.name || "",
+    address: obj.address || "",
+    business_area: obj.business_area || "",
+    type: obj.type || "",
+    label: obj.name || obj.address || "位置",
+  };
 }
 
 /**

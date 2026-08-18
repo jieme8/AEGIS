@@ -25,6 +25,7 @@ import { FeatureListWindow } from "./components/viz/FeatureListWindow.jsx";
 import { FlowDiagramWindow } from "./components/viz/FlowDiagramWindow.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
+import { useOilPrice } from "./lib/oilPrice.js";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
 import { BOOT_MS, SEQUENCE } from "./lib/bootTimeline.js";
 
@@ -51,6 +52,8 @@ export default function App() {
   // bootGone=遮罩已退场可卸载。
   const [booted, setBooted] = useState(false);
   const [bootGone, setBootGone] = useState(false);
+  // 油价卡实时数据：从同源 /api/oil 拉取真实 92# 零售价（失败回退占位值）
+  const oil = useOilPrice();
   // MCP 浮层默认显示：用户要求启动即展示服务器列表，并实时反映本轮会话用到的工具。
   const [mcpOpen, setMcpOpen] = useState(true);
   const [activeTask, setActiveTask] = useState("task-image");
@@ -170,16 +173,19 @@ export default function App() {
       {/* 设置窗口：语言模型 / 生图模型 / 生图比例 三个切换器迁入此处 */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中。
-          nextAdjust 不传 → 面板按官方年度调价表从“今天”动态推算下一次窗口，
-          倒计时与“更新于”时间戳每分钟随系统时间刷新，不再卡死在旧日期。
-          注：price/prevClose 目前为展示用占位值（无实时油价 feed），
-          接入真实数据源后替换 data 即可。 */}
+      {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠顶部左侧。
+          数据经 useOilPrice 从同源 /api/oil 拉取「油价网」真实 92# 零售价：
+          - 成功：price/prevClose 为真实全国均价与上一轮调价价，涨跌真实；
+          - 失败/首屏：回退占位值，面板不空不崩。
+          nextAdjust/prevAdjust 由真实数据提供（上/下轮窗口），倒计时与抓取时间随之刷新。 */}
       <div className="oil-dock">
         <OilPricePanel
           booted={booted}
-          data={{ name: "92# 汽油", unit: "元/升", price: 7.79, prevClose: 7.98 }}
-          forecast={{ direction: "down", text: "预计小幅下调" }}
+          data={oil.data}
+          forecast={oil.forecast}
+          nextAdjust={oil.nextAdjust ? new Date(oil.nextAdjust) : undefined}
+          prevAdjust={oil.prevAdjust ? new Date(oil.prevAdjust) : undefined}
+          updatedAt={oil.updatedAt}
         />
       </div>
 

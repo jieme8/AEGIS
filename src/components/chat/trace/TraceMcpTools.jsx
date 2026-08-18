@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { CopyButton, MCP_STATUS, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
+import { sanitizeImageRefs, sanitizeField } from "../../../lib/traceSanitize.js";
 
 /**
  * 06 · 工具调用（MCP）（独立桌面浮层）
@@ -28,23 +29,18 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
   const toggleExpand = (key) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // 过滤掉 @image#N:"..." 等图片引用块（MCP 工具返回可能内嵌图片标记）
-  const sanitize = (text) => {
-    if (!text) return text;
-    const s = typeof text === "string" ? text : JSON.stringify(text);
-    return s.replace(/@image#\d+:\s*"[^"]*"/g, "").replace(/\s{2,}/g, " ").trim();
-  };
   // 安全显示任意 MCP 文本字段（name/server/result/args 统一过滤）
+  // 集中到 lib/traceSanitize.js 维护，三处 trace 面板共用同一套规则。
   const safeText = (val) => {
     if (!val) return "";
-    return sanitize(typeof val === "string" ? val : JSON.stringify(val));
+    const text = typeof val === "string" ? val : safeJson(val);
+    return sanitizeImageRefs(text);
   };
-  const summarize = (result) => {
-    if (!result) return "—";
-    const text = typeof result === "string" ? result : JSON.stringify(result);
-    const clean = sanitize(text);
-    return clean.length > 80 ? clean.slice(0, 80) + "…" : clean || "—";
-  };
+  const summarize = (result) => sanitizeField(result);
+
+  function safeJson(v) {
+    try { return JSON.stringify(v); } catch (_) { return String(v); }
+  }
 
   return (
     <FloatingPanel
@@ -117,7 +113,7 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
                         <CopyButton text={typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)} />
                       </div>
                       <pre className={`trace-code${inv.isError ? " err" : ""}`}>
-                        {sanitize(inv.result)}
+                        {safeText(typeof inv.result === "string" ? inv.result : safeJson(inv.result))}
                       </pre>
                     </>
                   )}

@@ -8,6 +8,8 @@ import { runAgentLoop } from "../lib/agentLoop.js";
 import { providerManager } from "../lib/providerManager.js";
 import { runImagePipeline } from "../lib/imagePipeline.js";
 import { runAutoMemory } from "../lib/autoMemory.js";
+// 渲染前过滤：脱敏 @image#N:"..." / <image_local_path>...</image_local_path> / Windows 路径等本地图片引用
+import { sanitizeImageRefs } from "../lib/traceSanitize.js";
 import {
   parseCommand,
   searchMovies,
@@ -16,9 +18,29 @@ import {
   MOVIE_SEARCH_PREFIX,
   AT_COMMANDS,
 } from "../lib/movieSearch.js";
+// 影视「影片发现」渲染（元数据卡片，加法接入 @影视搜索 窗口顶部）
+import { populateDiscovery } from "../lib/movieDiscovery.js";
+// 内容生成后校验引擎：溯源 / 可信度分级，落实「事实准确性为最高优先级」
+import { verifyAnswer, extractLiveSources, LEVEL_META } from "../lib/answerVerifier.js";
+
+// 事实准确性优先 · 系统级约束（最高优先级，追加进 system 提示词，约束每一次回复）
+const FACTUALITY_DIRECTIVES =
+  "\n\n【事实准确性准则 · 最高优先级】\n" +
+  "1. 事实准确性是你回答的最高优先级。凡不确定、无可靠依据或超出你知识范围的内容，必须直接、明确地说明" +
+  "（如「我不确定 / 无法确认 / 缺乏权威依据」），绝不编造、不猜测、不产生幻觉、不用含糊措辞掩盖未知。\n" +
+  "2. 涉及具体事实、数据、统计、引用、法规、人物言论、来源归属时，必须在回复正文内直接标注来源网址（URL），" +
+  "不要仅在末尾或气泡外挂脚注。推荐格式：紧随事实后加 Markdown 链接，例如「发布于 [Flickr](https://www.flickr.com/...)」、" +
+  "「摄影师 John Warkentien，参见 [Know Your Meme](https://...)」。" +
+  "若无法给出确切 URL，应写明「（来源未确认）」或「（暂无可靠来源 URL）」，不得伪造链接。\n" +
+  "3. 在回复末尾用独立一段列出「来源」清单：逐条给出完整 URL，并简要说明可信度（官方 / 权威媒体 / 一般媒体 / 未知）。" +
+  "如果正文已内联全部 URL，可省略重复项，但仍需保留「来源：见正文链接」说明。\n" +
+  "4. 当内容属于创意 / 虚构 / 假设性创作时，必须在开头显式标注「以下为虚构创作」，避免与事实混淆。\n" +
+  "5. 知识有时效边界：你的训练知识有截止日期，无法获取实时数据（股价、天气、突发新闻等）。" +
+  "涉及最新动态时，应主动声明局限并建议用户查阅权威来源核实。\n" +
+  "6. 所有表述须有据可依；无法溯源的断言应降级为「可能 / 待核实」或明确标注不确定性。";
 // 对话位置自动地图标注 → 独立 MapWindow 浮窗（事件驱动）
-import { extractLocations } from "../lib/locationExtractor.js";
-import { parseGeoMarker, parseRoute } from "../lib/mapParse.js";
+import { extractLocations, KNOWN_CITY } from "../lib/locationExtractor.js";
+import { parseGeoMarker, parseRoute, parseTextSearch, parseSearchDetail } from "../lib/mapParse.js";
 
 /**
  * 主对话窗口控制器（集成于频谱可视化器）—— 页面核心交互区。
@@ -65,54 +87,50 @@ function copyText(text, btn) {
   }
 }
 
-// URL 正则：匹配 http/https 开头的链接
-const URL_RE = /(https?:\/\/[^\s<>"'){}|\\^[\]`]+)/g;
-
 /**
- * 将 bubble-text 中的裸 URL 包装为可一键复制的 <span class="chat-url">
- * 每个 URL 旁带一个小复制图标，点击仅复制该 URL（不影响整段复制）。
- * 仅对 AI 气泡执行（用户发的消息通常不含 URL）。
+ * 将 bubble-text 中的 Markdown 链接与裸 URL 渲染为可点击 <a>。
+ * - [文本](http://url) → 显示文本，点击打开 URL。
+ * - http://url / https://url → 直接显示并点击打开。
+ * 文本段落用 createTextNode，链接用 createElement('a')，不引入任意 HTML，防 XSS。
+ * 仅对 AI 气泡执行（用户消息保持纯文本）。
  */
-function wrapUrls(bubble) {
-  const textNode = bubble.querySelector(".bubble-text");
-  if (!textNode) return;
-  const text = textNode.textContent;
-  if (!URL_RE.test(text)) return;                   // 无 URL，跳过
-  URL_RE.lastIndex = 0;
-  const frag = document.createDocumentFragment();
+function renderInlineLinks(bubble, text) {
+  const textSpan = bubble.querySelector(".bubble-text");
+  if (!textSpan) return;
+  const raw = String(text || "");
+  // 同时匹配 Markdown 链接 [text](url) 与裸 URL
+  const re = /\[([^\]]+)\]\(([^)]+)\)|https?:\/\/[^\s<]+/g;
+  textSpan.textContent = "";          // 清空，后续手动重建文本节点 + 链接
   let last = 0;
   let m;
-  while ((m = URL_RE.exec(text)) !== null) {
-    // URL 前的普通文本
+  while ((m = re.exec(raw)) !== null) {
     if (m.index > last) {
-      const t = document.createTextNode(text.slice(last, m.index));
-      frag.appendChild(t);
+      textSpan.appendChild(document.createTextNode(raw.slice(last, m.index)));
     }
-    // URL 包装容器
-    const urlWrap = document.createElement("span");
-    urlWrap.className = "chat-url";
-    const urlText = document.createTextNode(m[1]);
-    urlWrap.appendChild(urlText);
-
-    // URL 专属小复制按钮
-    const urlBtn = document.createElement("span");
-    urlBtn.className = "chat-url-copy";
-    urlBtn.title = "复制链接";
-    urlBtn.innerHTML = COPY_ICON;               // 复用 SVG 常量
-    urlBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      copyText(m[1], urlBtn);
-    });
-    urlWrap.appendChild(urlBtn);
-    frag.appendChild(urlWrap);
-    last = m.index + m[1].length;
+    if (m[1] != null && m[2] && m[2].startsWith("http")) {
+      const a = document.createElement("a");
+      a.href = m[2];
+      a.textContent = m[1];
+      a.className = "chat-md-link";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      textSpan.appendChild(a);
+    } else if (m[0] && m[0].startsWith("http")) {
+      const a = document.createElement("a");
+      a.href = m[0];
+      a.textContent = m[0];
+      a.className = "chat-bare-link";
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      textSpan.appendChild(a);
+    } else {
+      textSpan.appendChild(document.createTextNode(m[0]));
+    }
+    last = m.index + m[0].length;
   }
-  // 尾部普通文本
-  if (last < text.length) {
-    frag.appendChild(document.createTextNode(text.slice(last)));
+  if (last < raw.length) {
+    textSpan.appendChild(document.createTextNode(raw.slice(last)));
   }
-  // 替换原文本节点
-  textNode.replaceWith(frag);
 }
 
 // 给气泡挂一个「复制」图标按钮（绝对定位在气泡内右上角，hover 浮现）
@@ -133,11 +151,101 @@ function attachCopyButton(bubble, label = "复制回复") {
   bubble.appendChild(copyBtn);
 }
 
+// 气泡溯源脚注：把可信度徽章 / 来源可信度点 / 知识时效边界挂到 AI 回复下方。
+// 让每一次对话输出在界面上「可溯源、可验证」，落地事实准确性准则。
+function attachProvenanceFooter(wrap, report, opts = {}) {
+ try {
+  if (!wrap) return;
+  if (wrap.querySelector(".chat-source-footer")) return;   // 防重复挂载
+  const footer = document.createElement("div");
+  footer.className = "chat-source-footer";
+
+  // 可信度 / 状态徽章
+  const badge = document.createElement("span");
+  if (opts.fallback || opts.error) {
+    badge.className = "src-badge " + (opts.fallback ? "lv-sim" : "lv-low");
+    badge.textContent = opts.fallback ? "模拟 · 无真实依据" : "失败 · 未溯源";
+  } else {
+    badge.className = "src-badge " + (report ? LEVEL_META[report.level].cls : "lv-medium");
+    badge.textContent = report ? LEVEL_META[report.level].label : "校验中";
+  }
+  const head = document.createElement("div");
+  head.className = "src-head";
+  const headLabel = document.createElement("span");
+  headLabel.className = "src-head-label";
+  headLabel.textContent = "来源与依据";
+  head.appendChild(headLabel);
+  head.appendChild(badge);
+
+  // 元数据（来源数 / 评分）
+  const meta = document.createElement("span");
+  meta.className = "src-meta";
+  if (opts.fallback || opts.error) {
+    meta.textContent = opts.fallback ? "本地模拟回复" : "接口调用失败";
+  } else if (report) {
+    meta.textContent = `来源 ${report.sourceCount} · 评分 ${report.score}` + (report.required ? ` · 可溯源 ${report.coverage}%` : "");
+  }
+  head.appendChild(meta);
+  footer.appendChild(head);
+
+  // 来源可信度点（点击直达）
+  if (report && report.sources.length) {
+    const list = document.createElement("div");
+    list.className = "src-list";
+    report.sources.forEach((s) => {
+      const a = document.createElement("a");
+      a.className = "src-link " + s.trust.cls;
+      a.href = s.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.title = (s.host || s.url) + " · " + s.trust.label + "（点击打开）";
+      a.textContent = (s.host || s.url) + " · " + s.trust.short;
+      list.appendChild(a);
+    });
+    footer.appendChild(list);
+  }
+
+  // 时效边界 / 不确定性说明
+  const note = document.createElement("div");
+  note.className = "src-note";
+  if (opts.fallback) {
+    note.textContent = "本地模拟回复，未接入真实模型，内容不可作为事实依据。";
+  } else if (opts.error) {
+    note.textContent = "响应失败，未生成可溯源内容；详见对话流-请求状态。";
+  } else if (report) {
+    note.textContent = report.fictionalLabel
+      ? "已标注虚构创作：内容非事实，仅供创意参考。"
+      : "模型知识有时效边界，关键事实请以权威来源为准。" + (report.hasUncertainty ? " 已声明不确定性。" : "");
+  }
+  footer.appendChild(note);
+
+  wrap.appendChild(footer);
+  // 关键修复：脚注在 finalize() 的自动滚动之后才挂载，必须主动滚入可视区，
+  // 否则长回复时脚注会落在可视区下方，用户「看不到溯源信息」。
+  try { footer.scrollIntoView({ block: "nearest" }); } catch (_) {}
+  console.log("[chat] 溯源脚注已挂载 · level=", report ? report.level : (opts.fallback ? "fallback" : opts.error ? "error" : "?"), " sources=", report ? report.sourceCount : 0);
+ } catch (e) {
+  // 任何意外都不应让溯源信息彻底消失：降级为最小可见脚注 + 控制台报错
+  console.error("[chat] 溯源脚注挂载失败", e);
+  try {
+    const f = document.createElement("div");
+    f.className = "chat-source-footer";
+    f.textContent = "来源与依据：挂载异常，详见控制台。";
+    wrap.appendChild(f);
+  } catch (_) {}
+ }
+}
+
 export function useChatController() {
   // —— 过程可视化状态（最小侵入：仅这一份 React 状态，抽屉是唯一消费者）——
   const [trace, setTrace] = useState(null);
   const [traceOpen, setTraceOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);   // 面板开合由 React 状态驱动，避免重渲染把 className 写回导致关闭失效
+  // —— AI 主动给出的"行动项"：终态文本命中关键词 → 在 ChatMessages 下发挂一个 inline 按钮；
+  //    用户点了 → 弹 TravelWizard + 自动 clearPendingAction；用户发了任何 user 消息 → 也自动 clear。
+  //    null = 不显示。设计原则：不写死常显入口，按对话上下文自适应出现/消失。
+  const [pendingAction, setPendingAction] = useState(null);
+  const clearPendingAction = () => setPendingAction(null);
   const closeTrace = () => setTraceOpen(false);
   const toggleTrace = () => setTraceOpen((v) => !v);   // 一键显示/隐藏 5 个对话流浮层
 
@@ -151,6 +259,17 @@ export function useChatController() {
       storageKey: "cyber-chat-history-v1",
     };
     const OUTPUT_BURST_MS = 900;            // 与 viz 脚本 OUTPUT_BURST(0.9s) 对应
+
+    // —— 出行/规划意图关键词：AI 终态文本命中 → 在 ChatMessages 下发挂一个 inline 按钮（不写死常显）。
+    //    命中后按钮自然出现在最新一条 AI 回复下方；用户点选或发任意消息后即消失。
+    const TRAVEL_INTENT_RE =
+      /(周末出行|周末两天|周末游|出行方案|出行规划|周末规划|偏好类型|出行半径|所在城市[／/].*区县|所在城市.*区县|出行属性)/;
+    const setTravelAction = () =>
+      setPendingAction({
+        kind: "travel-wizard",
+        label: "🧭 让我帮你规划周末出行",
+        key: Date.now(),
+      });
 
     const panel = document.getElementById("chatPanel");
     const openBtn = document.getElementById("openChat");
@@ -418,19 +537,56 @@ export function useChatController() {
     }
 
     // 来源①：对消息文本抽取位置 → maps_geo → 每张地图一个地点（标题用真实地名）
-    async function maybeShowMap(text, role) {
+    // opts.ctx 可选：对话历史数组（用于 POI 上下文消歧，例如 ctx 含"上海"时"东方明珠"会升级成"上海东方明珠"）
+    async function maybeShowMap(text, role, opts = {}) {
       try {
-        const cands = extractLocations(text);
+        // 拼最近几轮历史做 ctx，避免单条文本"东方明珠"无城市前缀 → maps_geo 命中邵阳同名点。
+        // 限 3 条 / 单条 400 字防止 ctx 把 POI 过度泛化（误合并不该合并的远地城市）。
+        const recentCtx = (state.history || [])
+          .slice(-3)
+          .map((h) => String(h.text || "").slice(0, 400));
+        const cands = extractLocations(text, { ctx: recentCtx });
         if (!cands.length) return;
         for (const c of cands) {
           try {
-            const r = await mcpClient.callTool("maps_geo", { address: c.query });
-            if (!r.isError) {
-              const mk = parseGeoMarker(r.content, c.text);
-              if (mk) {
-                const mapId = "map-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
-                pushMapToWindow(mapId, mk.label || c.text || "位置标注", [mk], null, c.query);
+            // 两段式精确查询：
+            // ① maps_text_search(keywords, city) → 取第一条 POI 的 id（按相关度排序，知名 POI 排第一）
+            // ② maps_search_detail(id) → 拿精确 location（GCJ-02）
+            // 失败再回退到 maps_geo（处理非 POI 类地址，如"杭州市西湖区文一路 100 号"等纯地址）。
+            let mk = null;
+            let detailQuery = c.query;
+            // 从 query 里识别 KNOWN_CITY 前缀作为 city 参数；无前缀则让 text_search 自由匹配。
+            let cityArg = null;
+            for (const city of KNOWN_CITY) {
+              if (c.query.startsWith(city)) { cityArg = city; break; }
+            }
+            const tsRes = await mcpClient.callTool("maps_text_search", {
+              keywords: c.query,
+              ...(cityArg ? { city: cityArg } : {}),
+            });
+            if (!tsRes.isError) {
+              const top = parseTextSearch(tsRes.content);
+              if (top && top.id) {
+                const detRes = await mcpClient.callTool("maps_search_detail", { id: top.id });
+                if (!detRes.isError) {
+                  const det = parseSearchDetail(detRes.content);
+                  if (det) {
+                    mk = det;
+                    detailQuery = top.id;
+                  }
+                }
               }
+            }
+            // 回退到 maps_geo
+            if (!mk) {
+              const r = await mcpClient.callTool("maps_geo", { address: c.query });
+              if (!r.isError) {
+                mk = parseGeoMarker(r.content, c.text);
+              }
+            }
+            if (mk) {
+              const mapId = "map-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+              pushMapToWindow(mapId, mk.label || c.text || "位置标注", [mk], null, detailQuery);
             }
           } catch (e) { /* 单条地理编码失败忽略 */ }
         }
@@ -455,18 +611,21 @@ export function useChatController() {
       bubble.className = "bubble";
       const textNode = document.createElement("span");     // 独立文本节点：流式更新只改它，不会误删复制按钮
       textNode.className = "bubble-text";
-      textNode.textContent = text;                         // textContent 防 XSS
+      // 渲染前脱敏本地路径 / 图片引用（@image#N / <image_local_path>）；持久化用的也是 sanitized 后的同一份，
+      // 重载历史时直接走 appendMessage 不需要再过滤一次。
+      const sanitized = (cls === "ai") ? sanitizeImageRefs(text || "") : (text || "");
+      textNode.textContent = sanitized;                     // textContent 防 XSS
       bubble.appendChild(textNode);
 
       wrap.appendChild(who);
       wrap.appendChild(bubble);
       // 一键复制：AI 回复与用户发送内容都支持（历史/新发一致）
       attachCopyButton(bubble, cls === "user" ? "复制内容" : "复制回复");
-      // AI 消息中的 URL 包装为可一键复制的链接
-      if (cls === "ai") wrapUrls(bubble);
+      // AI 消息中的 Markdown 链接与裸 URL 渲染为可点击 <a>
+      if (cls === "ai") renderInlineLinks(bubble, text);
       messagesEl.appendChild(wrap);
 
-      state.history.push({ role, text, time: ts });
+      state.history.push({ role, text: sanitized, time: ts });
       scrollBottom();
     }
 
@@ -514,8 +673,15 @@ export function useChatController() {
       scrollBottom();
       return {
         el: wrap,
-        set: (t) => { textNode.textContent = t; scrollBottom(); },
-        finalize: (t) => { textNode.textContent = t; wrap.classList.remove("chat-streaming"); scrollBottom(); },
+        // 流式每 chunk 渲染前都过 sanitize（idempotent，无副作用），避免中途出现一帧 @image#N:"..." 或本地路径
+        set: (t) => { textNode.textContent = sanitizeImageRefs(t || ""); scrollBottom(); },
+        finalize: (t) => {
+          const finalText = sanitizeImageRefs(t || "");
+          textNode.textContent = finalText;
+          renderInlineLinks(bubble, finalText);          // 把 [文本](url) 与裸 URL 渲染为可点击链接
+          wrap.classList.remove("chat-streaming");
+          scrollBottom();
+        },
       };
     }
 
@@ -547,6 +713,7 @@ export function useChatController() {
             '<span class="msw-status" id="mswStatus">就绪</span>' +
             '<button class="msw-close" id="mswClose" type="button" aria-label="关闭">✕</button>' +
           '</div>' +
+          '<div class="msw-discovery" id="mswDiscovery"></div>' +
           '<div class="msw-body">' +
             '<div class="msw-left">' +
               '<div class="msw-sect">检索过程 · 工具调用</div>' +
@@ -645,6 +812,9 @@ export function useChatController() {
       res.innerHTML = '<div class="msw-loading"><span class="mp-spin"></span> 正在初始化检索流水线…</div>';
       if (statusEl) statusEl.textContent = "初始化…";
 
+      // —— 加法：顶部「影片发现」区（元数据卡片），失败不影响下方 Bing 结果 ——
+      populateDiscovery(root.querySelector("#mswDiscovery"), query);
+
       const steps = new Map();
       const addTool = (ev) => {
         let li = steps.get(ev.id);
@@ -712,7 +882,8 @@ export function useChatController() {
         role: "system",
         content:
           "你是集成在一个赛博朋克风格界面中的 AI 助手「J.A.R.V.I.S.」。" +
-          "请用简体中文回答，语气带科技感，简洁清晰、切中要点。",
+          "请用简体中文回答，语气带科技感，简洁清晰、切中要点。" +
+          FACTUALITY_DIRECTIVES,
       };
       const historyMsgs = state.history.slice(-12).map((m) => ({
         role: m.role === "user" ? "user" : "assistant",
@@ -819,14 +990,18 @@ export function useChatController() {
       return true;
     }
 
-    async function handleSend() {
-      const raw = input.value.trim();
-      if (!raw || state.busy) return;
+    async function handleSend(overrideText) {
+      console.log("[chat] handleSend called", { override: overrideText != null, busy: state.busy });
+      const raw = (overrideText != null ? String(overrideText) : input.value).trim();
+      if (!raw) { console.log("[chat] handleSend early: empty raw"); return; }
+      if (state.busy) { console.log("[chat] handleSend early: busy"); return; }
       if (raw.length > CONFIG.maxChars) {
         appendMessage("ai", "消息过长，请控制在 " + CONFIG.maxChars + " 字以内。");
         return;
       }
       appendMessage("user", raw);
+      // 用户发了任意一条消息 → 之前的"AI 行动项"请求已被覆盖/失效，inline 按钮自动消失
+      clearPendingAction();
       // 来源①：用户输入含位置 → 自动地图标注（fire-and-forget，不阻塞发送）
       maybeShowMap(raw, "user").catch(() => {});
       input.value = "";
@@ -871,6 +1046,12 @@ export function useChatController() {
           toolsCount: 0,
           invocations: [],
         },
+        // 内容校验（溯源 / 可信度）：流式期间实时捕获来源，终态定稿完整报告
+        verification: {
+          status: "verifying",   // verifying | done | fallback | error
+          sources: [],
+          sentAt: Date.now(),
+        },
       };
       setTrace(traceInit);
       setTraceOpen(true);                     // 对话发起瞬间自动弹出浮层
@@ -892,7 +1073,16 @@ export function useChatController() {
       function flushTrace() {
         flushScheduled = false;
         setTrace((prev) =>
-          prev ? { ...prev, reply: { ...prev.reply, text: answer, reasoning } } : prev);
+          prev
+            ? {
+                ...prev,
+                reply: { ...prev.reply, text: answer, reasoning },
+                // 流式期间实时抽取已出现的来源，让「校验中」可见
+                verification: prev.verification
+                  ? { ...prev.verification, sources: extractLiveSources(answer) }
+                  : prev.verification,
+              }
+            : prev);
       }
       function scheduleTraceFlush() {
         if (flushScheduled) return;
@@ -965,10 +1155,23 @@ export function useChatController() {
         }
 
         if (!started) beginStream();          // 极少见：无任何增量也需定稿
+        // 终态校验：把 AI 回复转成可追溯报告（可信度 / 来源 / 时效边界）
+        const vReport = verifyAnswer({
+          text: result.finalContent,
+          model: (activeProfile || {}).model,
+          sentAt: traceInit.sentAt,
+        });
         if (bubble) bubble.finalize(result.finalContent);
+        // 气泡溯源脚注：把可信度 / 来源 / 时效边界直接挂到回复下方，输出可溯源、可验证
+        const fbTarget = (bubble && bubble.el) ? bubble.el : (messagesEl && messagesEl.lastElementChild);
+        attachProvenanceFooter(fbTarget, vReport);
         // 来源①：AI 终态文本含位置 → 自动地图标注
         maybeShowMap(result.finalContent, "ai").catch(() => {});
-        state.history.push({ role: "assistant", text: result.finalContent, time: Date.now() });
+        // 出行/规划意图识别：AI 终态文本若问"请补充定位参数/偏好/半径" → 在回复下方挂一个临时 inline 行动按钮
+        // 不写死常显入口，按对话上下文自适应出现/消失。
+        if (TRAVEL_INTENT_RE.test(result.finalContent)) setTravelAction();
+        // 历史持久化前过 sanitize：避免重载后历史里仍含 @image#N:"..." / Windows 路径
+        state.history.push({ role: "assistant", text: sanitizeImageRefs(result.finalContent), time: Date.now() });
         saveHistory();
         runImagePipeline(result.finalContent);   // 终态触发：把最终回答额外生成一张配图（旁路，不影响文本）
         // 自动记忆获取（旁路，fire-and-forget）：本轮对话结束后提炼用户长期事实写入 memory
@@ -982,6 +1185,8 @@ export function useChatController() {
             status: result.degraded ? "unavailable" : (prev.mcp?.status || "ok"),
             toolsCount: cachedOpenAITools?.length || 0,
           },
+          // 终态校验报告（status 切 done，附完整报告）
+          verification: { ...vReport, status: "done" },
         } : prev));
         // 触发“内容输出”页面特效，并在爆发结束后回落到 idle
         if (window.CyberFx) {
@@ -997,13 +1202,16 @@ export function useChatController() {
           reason + "\n（请检查网络 / 代理 / 密钥；可在 trace 浮层查看状态）"
         );
         let finalText;
+        let replyKind = "error";
         if (MODEL_CONFIG.fallbackToLocal) {
+          replyKind = "fallback";
           // 接口失败回退：中性本地文案（不与频谱数据绑定）
           finalText = "（本地模拟回复）当前无法连接 AI 服务，请稍后再试。";
           setTrace((prev) => (prev ? {
             ...prev, status: "fallback", mode: "local", error: reason,
             reply: { ...prev.reply, text: finalText, reasoning, done: true },
             mcp: { ...prev.mcp, status: "error" },
+            verification: { status: "fallback", sources: [], error: reason },
           } : prev));
         } else {
           finalText = "响应失败：" + reason;
@@ -1011,13 +1219,19 @@ export function useChatController() {
             ...prev, status: "error", error: reason,
             reply: { ...prev.reply, text: finalText, reasoning, done: true },
             mcp: { ...prev.mcp, status: "error" },
+            verification: { status: "error", sources: [], error: reason },
           } : prev));
         }
         // 渲染最终文本到气泡（已流式则定稿，否则新建）
         if (bubble) bubble.finalize(finalText);
         else appendMessage("ai", finalText);
+        // 兜底 / 失败路径：明确脚注「无真实依据 / 未溯源」，避免用户误信
+        const fbWrap = bubble ? bubble.el : messagesEl.lastElementChild;
+        attachProvenanceFooter(fbWrap, null, { fallback: replyKind === "fallback", error: replyKind === "error" });
         // 来源①：AI 错误/兜底文本含位置 → 自动地图标注
         maybeShowMap(finalText, "ai").catch(() => {});
+        // 出行/规划意图识别（兜底路径同样触发，避免 error 路径把用户卡死）
+        if (TRAVEL_INTENT_RE.test(finalText)) setTravelAction();
         runImagePipeline(finalText);   // 兜底/错误路径同样配图（旁路，不影响文本）
         if (window.CyberFx) window.CyberFx.idle();
       } finally {
@@ -1229,5 +1443,5 @@ export function useChatController() {
     init();
   }, []);
 
-  return { trace, traceOpen, closeTrace, toggleTrace, openTrace: () => setTraceOpen(true), panelOpen };
+  return { trace, traceOpen, closeTrace, toggleTrace, openTrace: () => setTraceOpen(true), panelOpen, send: (text) => handleSend(text), pendingAction, clearPendingAction };
 }

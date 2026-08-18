@@ -3,62 +3,69 @@
    视觉语言对齐主页 cyber.css：复用全局 token
    (--cyan/--magenta/--panel/--txt/--dim/--mono)。
    涨跌保持中国习惯：涨=红 跌=绿（组件局部语义变量）。
-   本版在信息完整、可读、不重叠的前提下适度压缩尺寸。
+   固定尺寸徽章：宽 390 × 高 52（box-sizing: border-box），不随内容伸缩。
+   内部以「呼吸留白 + 主次分级」为优化重点，避免内容拥挤。
    ========================================================= */
 .oil {
-  /* 直接复用主页 token，带兜底值（脱离主页单独运行也同款外观）。
-     宽度改为跟随父容器最大 390px，避免在 .oil-dock 限宽时被截断/溢出。 */
-  width: min(390px, 100%);
+  /* 固定尺寸徽章：宽 390 × 高 52（box-sizing: border-box），不随内容伸缩。 */
+  width: 390px;
+  height: 52px;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 9px;
+  overflow: hidden;                 /* 固定高度的安全兜底：内容已排版贴合，正常不会裁切 */
   font-family: var(--mono, ui-monospace, "SF Mono", "Consolas", monospace);
   color: var(--txt, #c8f4ff);
   background: var(--panel, rgba(8,14,26,0.55));
   border: 1px solid rgba(0,240,255,0.23);
   border-radius: 3px;                       /* 对齐主页 .panel */
-  padding: 7px 10px;
+  padding: 7px 14px;                         /* 上下给呼吸、左右留白，缓解“挤” */
   box-shadow: 0 0 14px rgba(0,240,255,0.10), inset 0 0 10px rgba(0,240,255,0.05);
   backdrop-filter: blur(3px);
-  letter-spacing: 0.6px;
-  line-height: 1.2;
+  letter-spacing: 0.4px;                     /* 略收字距，横向更松 */
+  line-height: 1.15;
   user-select: none;
 }
 
 /* 呼吸 LED（对齐主页状态点） */
-.oil-led { width: 6px; height: 6px; border-radius: 50%;
-           background: var(--cyan, #00f0ff); box-shadow: 0 0 6px var(--cyan, #00f0ff); flex: 0 0 auto; }
+.oil-led { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto;
+           background: var(--cyan, #00f0ff); box-shadow: 0 0 6px var(--cyan, #00f0ff);
+           margin-right: 11px; }              /* 与价格区拉开间距 */
 
 /* 价格主区 —— flex-shrink:0 防止被右侧挤压导致价格与涨跌重叠 */
 .oil-main { display: flex; flex-direction: column; flex-shrink: 0; }
-.oil-name { font-size: 9px; letter-spacing: 0.6px; line-height: 1.15; color: var(--dim, #4a6b80);
-            white-space: nowrap; }                                  /* 对齐 .k */
-.oil-price { font-size: clamp(18px, 5vw, 21px); font-weight: 700; line-height: 1;
-             margin-top: 1px; color: var(--cyan, #00f0ff);          /* 对齐 .v */
+.oil-name { font-size: 9px; letter-spacing: 0.4px; line-height: 1.1; color: var(--dim, #4a6b80);
+            white-space: nowrap; margin-bottom: 2px; }                  /* 对齐 .k */
+.oil-price { font-size: 18px; font-weight: 700; line-height: 1;
+             color: var(--cyan, #00f0ff);          /* 对齐 .v */
              text-shadow: 0 0 6px rgba(0,240,255,0.5); white-space: nowrap;
              font-variant-numeric: tabular-nums; }
 .oil-price .unit { font-size: 9px; color: var(--dim, #4a6b80); font-weight: 400;
                    margin-left: 2px; text-shadow: none; }
 
-/* 涨跌幅（中国习惯 涨红跌绿）*/
-.oil-chg { font-size: 11px; line-height: 1.15; font-variant-numeric: tabular-nums;
-           display: flex; align-items: center; gap: 3px; white-space: nowrap; flex: 0 0 auto;
-           margin-left: 2px; }                                        /* 与价格区间隔 */
+/* 涨跌幅（中国习惯 涨红跌绿）：拆成两行（金额 / 百分比），与价格区视觉平衡，
+   不再和价格挤在同一行抢横向空间。 */
+.oil-chg { display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+           font-variant-numeric: tabular-nums; white-space: nowrap;
+           flex: 0 0 auto; margin-left: 15px; }                          /* 与价格区拉开间距 */
+.oil-chg-main { display: flex; align-items: center; gap: 3px; font-size: 11px; line-height: 1.1; }
+.oil-chg-pct  { font-size: 9px; line-height: 1.1; opacity: 0.85; }
 .oil-chg-up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 5px rgba(255,84,112,0.45); }
 .oil-chg-down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 5px rgba(47,230,160,0.45); }
 .oil-arrow { font-size: 9px; }
 
 /* 竖向分隔（对齐主页细描边） */
 .oil-sep { width: 1px; align-self: stretch; background: rgba(0,240,255,0.18); flex: 0 0 auto;
-           margin: 2px 0; }                                           /* 上下留短边不顶满 */
+           margin: 4px 14px; }                                           /* 上下留短边、左右留白 */
 
-/* 右侧信息（调价 + 预估），复用 .k / .v 语言 */
+/* 右侧信息（调价 + 预估 + 更新），复用 .k / .v 语言；行距收紧 + 行间隙留白，主次分明 */
 .oil-info { display: flex; flex-direction: column; gap: 3px; margin-left: auto; flex: 1 1 auto; min-width: 0; }
-.oil-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; line-height: 1.15; }
-.oil-k { font-size: 9px; letter-spacing: 0.6px; color: var(--dim, #4a6b80); flex: 0 0 auto; }   /* 对齐 .k */
-.oil-v { font-size: 10px; line-height: 1.15; color: var(--cyan, #00f0ff); min-width: 0;        /* 对齐 .v */
+.oil-row { display: flex; align-items: center; gap: 6px; white-space: normal; line-height: 1.1; }
+.oil-k { font-size: 8px; letter-spacing: 0.4px; color: var(--dim, #4a6b80); flex: 0 0 auto; }   /* 对齐 .k */
+.oil-v { font-size: 9px; line-height: 1.1; color: var(--cyan, #00f0ff); min-width: 0;         /* 对齐 .v */
          font-variant-numeric: tabular-nums; text-shadow: 0 0 6px rgba(0,240,255,0.5);
-         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+         /* 不再用省略号截断：所有内容可见；过窄时按词/字换行兜底而不隐藏 */
+         white-space: normal; overflow-wrap: anywhere; word-break: break-word; }
 .oil-v.up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 5px rgba(255,84,112,0.45); }
 .oil-v.down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 5px rgba(47,230,160,0.45); }
 .oil-v.hold { color: var(--dim, #4a6b80); }
@@ -68,32 +75,36 @@
 .oil-draggable { cursor: grab; }
 .oil-draggable.oil-dragging { cursor: grabbing; }
 
-/* 「调价」行兜底：保持单行（高度固定），超出时尾部省略号截断，不换行 */
-.oil-row--adjust { flex-wrap: nowrap; }
-.oil-row--adjust .oil-v { white-space: nowrap; }
-.oil-row--adjust .oil-dim { white-space: nowrap; }
+/* 「调价」行：允许在极窄容器下整体换行（作为兜底，正常宽度仍单行）。
+   文案已压缩（剩N天·MM-DD·上MM-DD），桌面/中屏均不触发换行。 */
+.oil-row--adjust { flex-wrap: wrap; }
+.oil-row--adjust .oil-v { white-space: normal; }
+.oil-row--adjust .oil-dim { white-space: normal; }
 
 /* =========================================================
-   响应式收敛：当 .oil-dock 被限宽时，防止油价卡内部横向溢出
+   响应式收敛：仅微调字号/间隔帮助贴合，绝不改变固定 390×52 尺寸，
+   也不换行（换行会破坏固定高度）。小屏下竖向分隔隐藏以省横向空间。
    ========================================================= */
 @media (max-width: 1099px) {
-  .oil { gap: 6px; padding: 6px 9px; }
-  .oil-price { font-size: clamp(17px, 4.5vw, 20px); }
+  .oil { padding: 6px 12px; }
+  .oil-led { margin-right: 9px; }
+  .oil-price { font-size: 18px; }
   .oil-price .unit { font-size: 8px; }
-  .oil-chg { font-size: 10px; gap: 2px; margin-left: 0; }
+  .oil-chg { margin-left: 12px; gap: 1px; }
+  .oil-chg-main { font-size: 10px; }
+  .oil-chg-pct { font-size: 8px; }
+  .oil-sep { margin: 4px 10px; }
   .oil-info { gap: 2px; }
-  .oil-row { gap: 4px; }
+  .oil-row { gap: 5px; }
   .oil-k { font-size: 8px; }
   .oil-v { font-size: 9px; }
 }
 
 @media (max-width: 640px) {
-  /* 容器过窄时：右侧信息区换到第二行（外层 .oil 换行，但行内文字仍单行截断，不换行） */
-  .oil { flex-wrap: wrap; padding: 6px 8px; }
-  .oil-main { flex: 1 1 auto; min-width: 0; }
-  .oil-chg { margin-left: auto; }
+  /* 保持固定 390×52 单行长条：仅微调间隔、隐藏竖向分隔，不换行、不改尺寸。
+     注：卡片为固定 390 宽，超小屏（<390）会出现横向溢出，属预期的固定尺寸取舍。 */
+  .oil { padding: 6px 10px; }
+  .oil-led { margin-right: 8px; }
+  .oil-chg { margin-left: 10px; }
   .oil-sep { display: none; }
-  .oil-info { flex: 1 1 100%; margin-left: 0; gap: 2px; }
-  /* 行内保持 nowrap，靠 .oil-v 的 ellipsis 截断，不改变单行高度 */
-  .oil-row { white-space: nowrap; }
 }

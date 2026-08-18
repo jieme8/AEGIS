@@ -11,6 +11,8 @@ import { TraceMcpTools } from "./trace/TraceMcpTools.jsx";
  * index 用于错落入场动画。
  *
  * 注：原 TraceContext（02 附加上下文）已合并到 TracePrompt（03）中，不再独立渲染。
+ * 注：原 05 · 内容校验溯源浮层已移除——溯源信息改为直接显示在 AI 对话气泡内
+ *     （attachProvenanceFooter），不再单独开窗口，落实「直接在对话框里标注内容来源」。
  */
 export function TracePanels({ trace, open, onClose }) {
   return (

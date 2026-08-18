@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CopyButton, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
+import { sanitizeImageRefs } from "../../../lib/traceSanitize.js";
 
 /**
  * 03 · 提示词（独立桌面浮层）
@@ -17,6 +18,13 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
   const signature = (prompt.system || "") + "||" + JSON.stringify(prompt.messages || []);
   const hasContent = !!(prompt.system || (prompt.messages && prompt.messages.length));
   const alive = useContentPulse(signature, hasContent);
+
+  // 给"展示给用户看"的版本做图像引用/路径过滤，避免 trace 暴露本地路径 / @image#N
+  const systemDisplay = sanitizeImageRefs(prompt.system || "");
+  const messagesJsonDisplay = sanitizeImageRefs(JSON.stringify(prompt.messages || [], null, 2));
+  // 复制按钮仍然给原文（含引用，便于用户复制粘贴完整 prompt）
+  const systemCopy = prompt.system || "";
+  const messagesCopy = JSON.stringify(prompt.messages || [], null, 2);
 
   // Messages 内部 code 块贴底
   useEffect(() => {
@@ -49,16 +57,16 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
           {/* System Prompt */}
           <div className="trace-sub">
             System Prompt
-            <CopyButton text={prompt.system || ""} />
+            <CopyButton text={systemCopy} />
           </div>
-          <pre className="trace-code">{prompt.system || "（空）"}</pre>
+          <pre className="trace-code">{systemDisplay || "（空）"}</pre>
 
           {/* 完整 Messages */}
           <div className="trace-sub">
             完整 Messages（发送给模型）
-            <CopyButton text={JSON.stringify(prompt.messages || [], null, 2)} />
+            <CopyButton text={messagesCopy} />
           </div>
-          <pre className="trace-code" ref={msgRef}>{JSON.stringify(prompt.messages || [], null, 2)}</pre>
+          <pre className="trace-code" ref={msgRef}>{messagesJsonDisplay}</pre>
         </div>
       </details>
     </FloatingPanel>
