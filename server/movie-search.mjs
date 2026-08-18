@@ -304,12 +304,11 @@ async function extractDirectLinks(resourceItems) {
   return links;
 }
 
-/** 实时检索主流程：多查询定向搜（并行）+ 过滤 + 深抠直链。 */
-async function tryLiveFetch(name) {
+/** Bing 定向检索：多查询并行抓取 + 过滤，返回资源页列表与命中数。 */
+async function searchBing(name) {
   // 定向资源查询（避开会让 Bing 退化的「百度网盘」整词与 site: 语法）
   const queries = [name + " 下载", name + " 磁力", name + " 网盘", name + " 迅雷下载", name];
   const byUrl = new Map();
-  // 并行抓取各查询，单查询超时 6s，互不阻塞
   await Promise.all(
     queries.map(async (q) => {
       const html = await fetchText(bingUrl(q), 6000);
@@ -323,11 +322,106 @@ async function tryLiveFetch(name) {
   // 资源意图优先，纯信息大站降级（仍保留，仅在无资源结果时兜底）
   const resource = all.filter((it) => isResourceIntent(it) && !isInfoHost(it));
   const info = all.filter((it) => !isResourceIntent(it) || isInfoHost(it));
-  const pageItems = resource.length ? resource : info;
+  const pageItems = (resource.length ? resource : info).slice(0, 8);
+  return { pageItems, bingHit: all.length };
+}
 
+// —— 网盘失效 / 过期页面标记（服务端直出失效页时命中；SPA 壳页会回退为 unknown）——
+const EXPIRED_RE = /已失效|链接已过期|分享已取消|分享不存在|文件已被删除|此分享已失效|访问已过期|该分享已失效|分享内容已经被取消|页面不存在|该链接分享内容可能已经删除|分享已失效|提取码错误次数过多|文件不存在|已被删除|已被取消共享|链接失效|分享已过期/i;
+
+/** 核验单条网盘分享地址：可达 + 是否命中失效标记；无法在线确认文件存在 → unknown。 */
+async function verifyPan(url) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4500);
+  const UA = {
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept-Language": "zh-CN,zh;q=0.9",
+  };
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, redirect: "follow", headers: UA });
+    if (!r.ok) return { status: "dead", note: `分享页访问失败（HTTP ${r.status}）` };
+    // 读取前 ~60KB 扫描“已失效 / 过期”标记（部分网盘服务端直出失效页）
+    const reader = r.body.getReader();
+    let buf = "";
+    let stopped = false;
+    while (!stopped) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += Buffer.from(value).toString("utf8");
+      if (buf.length > 60000) stopped = true;
+    }
+    if (EXPIRED_RE.test(buf)) return { status: "expired", note: "网盘分享疑似已失效 / 过期" };
+    return { status: "unknown", note: "分享页可访问，需在客户端确认文件是否仍有效" };
+  } catch (e) {
+    return { status: "unknown", note: "无法在线核验（超时 / 网络被拦截）" };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** 批量核验直链：网盘并行核验（并发受限），磁力 / ed2k 标注“需客户端”。 */
+async function verifyLinks(items, onProgress) {
+  const panItems = items.filter((i) => i.kind === "pan");
+  const others = items.filter((i) => i.kind !== "pan");
+  const total = panItems.length;
+  let checked = 0, live = 0, expired = 0, dead = 0, unknown = 0, unverifiable = 0;
+  const bump = () => { if (onProgress) onProgress({ checked, total, live, expired, dead, unknown }); };
+  const CONC = 10;
+  let idx = 0;
+  async function worker() {
+    while (idx < panItems.length) {
+      const it = panItems[idx++];
+      const v = await verifyPan(it.url);
+      it.verified = v;
+      checked++;
+      if (v.status === "live") live++;
+      else if (v.status === "expired") expired++;
+      else if (v.status === "dead") dead++;
+      else unknown++;
+      bump();
+    }
+  }
+  const n = Math.min(CONC, Math.max(panItems.length, 1));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  for (const it of others) {
+    it.verified = it.kind === "magnet"
+      ? { status: "unverifiable", note: "磁力需迅雷 / qBittorrent 客户端，无法在线核验可用性" }
+      : { status: "unverifiable", note: "eD2k 需 eMule 客户端，无法在线核验" };
+    unverifiable++;
+  }
+  bump();
+  return { live, expired, dead, unknown, unverifiable, total: items.length };
+}
+
+/**
+ * 检索主流程（可上报事件）：连接 → Bing 定向检索 → 资源页深链提取 → 直链核验 → 构造结果。
+ * @param {string} q
+ * @param {(o:object)=>void} emit  事件回调（SSE 用；JSON 模式下传 noop）
+ * @returns {Promise<object>} 含 groups / verify / tools 的结构化结果
+ */
+async function runPipeline(q, emit) {
+  emit({ type: "tool", id: "connect", name: "连接实时检索代理", status: "ok", detail: "同源代理 :8789 就绪" });
+
+  emit({ type: "tool", id: "bing", name: "Bing 定向检索（5 个资源查询）", status: "running" });
+  const { pageItems, bingHit } = await searchBing(q);
+  emit({ type: "tool", id: "bing", name: "Bing 定向检索", status: "ok", detail: `命中 ${bingHit} 个结果页` });
+
+  emit({ type: "tool", id: "extract", name: "资源页深链提取（并行抓取 + 迅雷解码）", status: "running" });
   const directLinks = await extractDirectLinks(pageItems);
+  emit({
+    type: "tool", id: "extract", name: "资源页深链提取", status: "ok",
+    detail: `抓取 ${Math.min(pageItems.length, 8)} 页 · 提取 ${directLinks.length} 条直链`,
+  });
 
-  return { pageItems: pageItems.slice(0, 8), directLinks };
+  emit({ type: "tool", id: "verify", name: "直链可达性 / 网盘有效核验", status: "running" });
+  const v = await verifyLinks(directLinks, (p) => emit({ type: "verify", ...p }));
+  emit({
+    type: "tool", id: "verify", name: "直链核验", status: "ok",
+    detail: `网盘 ${v.total} 条 → 失效/过期 ${v.expired} · 访问失败 ${v.dead} · 待确认 ${v.unknown}；磁力/ed2k ${v.unverifiable} 条需客户端`,
+  });
+
+  return buildResult(q, { pageItems, directLinks, verify: v });
 }
 
 /** 构造分层检索入口（始终返回，作为实时结果的补充）。 */
@@ -357,7 +451,7 @@ function buildEntryGroups(query) {
   ];
 }
 
-function buildResult(query, { pageItems, directLinks }) {
+function buildResult(query, { pageItems, directLinks, verify }) {
   // 仅保留用户要的直链类型（磁力 / 网盘 / ed2k），按类型分别限量，放宽上限
   const cap = { pan: 14, magnet: 10, ed2k: 3 };
   const byKind = { pan: [], magnet: [], ed2k: [] };
@@ -365,9 +459,13 @@ function buildResult(query, { pageItems, directLinks }) {
     const k = d.kind;
     if (byKind[k] && byKind[k].length < cap[k]) byKind[k].push(d);
   }
-  // 网盘内按类型优先级排序（夸克最前），同类型带提取码优先
+  // 网盘内排序：先按核验状态（待确认 > 疑似失效 > 访问失败），再按类型优先级（夸克最前），同类型带提取码优先
   const ndPri = (it) => (NETDISK_PRIORITY[it.type] != null ? NETDISK_PRIORITY[it.type] : 99);
+  const vrOrder = { unknown: 0, expired: 1, dead: 2 };
   byKind.pan.sort((a, b) => {
+    const va = a.verified ? vrOrder[a.verified.status] : 0;
+    const vb = b.verified ? vrOrder[b.verified.status] : 0;
+    if (va !== vb) return va - vb;
     const p = ndPri(a) - ndPri(b);
     if (p !== 0) return p;
     return (b.code ? 1 : 0) - (a.code ? 1 : 0);
@@ -383,15 +481,15 @@ function buildResult(query, { pageItems, directLinks }) {
     groups.push({
       kind: "magnet",
       title: "🧲 磁力直链",
-      note: "真实磁力链接，点击或复制后用迅雷 / qBittorrent 添加，无需提取码、直接可用。",
+      note: "真实磁力链接，点击或复制后用迅雷 / qBittorrent 添加，无需提取码；磁力需客户端，无法在线核验可用性。",
       items: magItems,
     });
   }
   if (panItems.length) {
     groups.push({
       kind: "pan",
-      title: "📦 网盘直链",
-      note: "真实网盘分享地址（夸克 / 阿里云盘 / 迅雷云盘 / 百度网盘等），已按夸克网盘优先排序；已附提取码的点开直接填码转存，未附码的需点开查看。",
+      title: "📦 网盘直链（已核验）",
+      note: "真实网盘分享地址（夸克 / 阿里云盘 / 迅雷云盘 / 百度网盘等），已按「待确认优先、失效/失败置底」+「夸克优先」排列；红色项为疑似失效或访问失败，已沉底。",
       items: panItems,
     });
   }
@@ -417,24 +515,37 @@ function buildResult(query, { pageItems, directLinks }) {
     }
   }
 
+  const v = verify || { expired: 0, dead: 0, unknown: 0, unverifiable: 0, total: 0 };
   const codeCount = panItems.filter((d) => d.code).length;
   return {
     query,
     keyword: "影视搜索",
     summary: live
-      ? `已为「${query}」实时检索到 ${magItems.length} 条磁力直链 + ${panItems.length} 条网盘直链（其中 ${codeCount} 条已附提取码，已按夸克网盘优先排列）。`
+      ? `已为「${query}」实时检索并核验：网盘分享 ${panItems.length} 条（其中 ${v.expired} 条疑似失效/过期、${v.dead} 条访问失败、${v.unknown} 条待客户端确认，已按可用优先排列）${(magItems.length) ? ` + 磁力直链 ${magItems.length} 条（需客户端核验）` : ""}。`
       : `未检索到直链，已附分层检索入口（点开手动检索）。`,
     generatedAt: new Date().toISOString(),
     groups,
     tips: [
       "磁力链接用迅雷 / qBittorrent 添加；百度网盘链接点开填提取码。",
-      "优先选择做种数 > 0 的资源，下载更快更完整。",
+      "绿色/黄色为待确认项，点开即可判断是否仍有效；红色为已核验失效/失败，建议跳过。",
       "资源到手后请核对分辨率、语言、集数是否匹配需求。",
     ],
     warnings: [
-      "直链均标注「需验证」，做种为 0 / 缺分辨率的资源可能难以下载或信息不全。",
+      "网盘分享均为「页可访问」即视为待确认，最终有效性以客户端打开为准；系统已尽力剔除明显失效/过期的分享。",
+      "磁力 / ed2k 需对应客户端，无法在线核验可用性。",
     ],
     live,
+    verify: v,
+    tools: [
+      { id: "connect", name: "连接实时检索代理", status: "ok", detail: "同源代理 :8789" },
+      { id: "bing", name: "Bing 定向检索", status: "ok", detail: `命中 ${pageItems ? Math.min(pageItems.length, 8) : 0} 个资源页` },
+      { id: "extract", name: "资源页深链提取 + 迅雷解码", status: "ok", detail: `提取 ${directCount} 条直链` },
+      {
+        id: "verify", name: "直链可达性 / 网盘有效核验",
+        status: (v.expired + v.dead) > 0 ? "warn" : "ok",
+        detail: `失效/过期 ${v.expired} · 访问失败 ${v.dead} · 待确认 ${v.unknown} · 磁力/ed2k ${v.unverifiable} 需客户端`,
+      },
+    ],
   };
 }
 
@@ -457,19 +568,54 @@ async function handleSearch(req, res) {
   const q = readQuery(req);
   if (!q) return sendJSON(res, 400, { error: "缺少查询参数 q（影视名称）" });
   log("检索：", q);
-  let live = { pageItems: [], directLinks: [] };
+  const noop = () => {};
+  let result;
   try {
-    live = await tryLiveFetch(q);
+    result = await runPipeline(q, noop);
   } catch (e) {
     warn("实时检索异常（已忽略，回退入口）：", e.message);
+    result = buildResult(q, { pageItems: [], directLinks: [], verify: { expired: 0, dead: 0, unknown: 0, unverifiable: 0, total: 0 } });
   }
-  sendJSON(res, 200, buildResult(q, live));
+  sendJSON(res, 200, result);
+}
+
+function sseSend(res, obj) {
+  res.write(`data: ${JSON.stringify(obj)}\n\n`);
+}
+
+/** SSE 流式检索：逐事件上报 工具调用 / 核验进度 / 最终结果，供独立窗口展示检索过程。 */
+async function handleStream(req, res) {
+  const q = readQuery(req);
+  if (!q) {
+    sseSend(res, { type: "error", message: "缺少查询参数 q（影视名称）" });
+    return res.end();
+  }
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream; charset=utf-8",
+    "Cache-Control": "no-cache, no-transform",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  const emit = (o) => sseSend(res, o);
+  log("流式检索：", q);
+  try {
+    const result = await runPipeline(q, emit);
+    emit({ type: "done", result });
+  } catch (e) {
+    warn("流式检索异常：", e.message);
+    emit({ type: "error", message: e.message || "检索异常" });
+  } finally {
+    res.end();
+  }
 }
 
 function createServer() {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://localhost");
     try {
+      if (req.method === "GET" && url.pathname === "/api/moviesearch/stream") {
+        return await handleStream(req, res);
+      }
       if (req.method === "GET" && url.pathname === "/api/moviesearch") {
         return await handleSearch(req, res);
       }

@@ -221,11 +221,12 @@ export function OilPricePanel({
   const nextDate = adjustWindow.next;
   const prevDate = adjustWindow.prev;
   const dCount = nextDate ? daysUntil(nextDate) : null;
+  // 缩短日期文案：非「今日调价」时只显示 MM-DD，避免「剩 N 天 · 08-28 24:00（上次 08-14）」溢出卡片
   const dDay =
     nextDate &&
-    `${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(
-      nextDate.getDate()
-    ).padStart(2, "0")} 24:00`;
+    (dCount <= 0
+      ? `${fmtMMDD(nextDate)} 24:00`
+      : fmtMMDD(nextDate));
 
   const fCls =
     forecast?.direction === "up"
@@ -256,7 +257,7 @@ export function OilPricePanel({
       <div className="oil-sep" />
 
       <div className="oil-info">
-        <div className="oil-row">
+        <div className="oil-row oil-row--adjust">
           <span className="oil-k">调价</span>
           <span className="oil-v">
             {dCount === null

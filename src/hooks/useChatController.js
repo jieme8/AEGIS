@@ -12,6 +12,7 @@ import {
   parseCommand,
   searchMovies,
   renderMovieResults,
+  streamMovieSearch,
   MOVIE_SEARCH_PREFIX,
   AT_COMMANDS,
 } from "../lib/movieSearch.js";
@@ -374,21 +375,38 @@ export function useChatController() {
     // 两条坐标来源：① 文本抽取（extractLocations）→ maps_geo；② AI tool-loop 调 maps_* 返回。
     // 输出目标：派发 CustomEvent 到 MapWindow（Portal 浮窗），不再内联插入 DOM。
 
-    // 已派发的坐标去重（避免同一条消息重复推送）
+    // 已派发的坐标 / query 去重（避免同一条消息、或用户+AI 重复推送同一地点）
     const dispatchedCoords = new Set();
-    function alreadyDispatched(key) { return dispatchedCoords.has(key); }
-    function markDispatched(key) { dispatchedCoords.add(key); }
+    const dispatchedQueries = new Set();
+    const queryToId = new Map(); // normalized query -> card id，用于更新旧卡片
 
     // 检测前端是否配了 Key B（高德 JS API），决定 MapWindow 渲染真实地图 or 降级文本
     function hasAmapJsKey() { return !!import.meta.env?.VITE_AMAP_JS_KEY; }
 
     // 来源①+② 统一入口：拿到 markers/route 后推送到 MapWindow
-    function pushMapToWindow(id, label, markers, route) {
-      // 坐标去重
-      const dedupKey = (markers || []).map((m) => m.lng.toFixed(4) + "," + m.lat.toFixed(4)).join("|");
-      if (!dedupKey && !route) return;
-      if (dedupKey && alreadyDispatched(dedupKey)) return;
-      markDispatched(dedupKey);
+    function pushMapToWindow(id, label, markers, route, query = "") {
+      const coordKey = (markers || []).map((m) => m.lng.toFixed(4) + "," + m.lat.toFixed(4)).join("|");
+      const normQuery = String(query).trim().toLowerCase();
+      if (!coordKey && !route) return;
+
+      // 同 query 已存在 → 更新旧卡片数据，避免同一地点在用户消息和 AI 工具调用里各出现一次
+      if (normQuery && dispatchedQueries.has(normQuery)) {
+        const existingId = queryToId.get(normQuery);
+        if (existingId) {
+          window.dispatchEvent(new CustomEvent("jarvis:map-ready", {
+            detail: { id: existingId, label, markers, route, hasJsKey: hasAmapJsKey() },
+          }));
+        }
+        return;
+      }
+      // 同坐标已推送过 → 跳过
+      if (coordKey && dispatchedCoords.has(coordKey)) return;
+
+      if (normQuery) {
+        dispatchedQueries.add(normQuery);
+        queryToId.set(normQuery, id);
+      }
+      if (coordKey) dispatchedCoords.add(coordKey);
 
       window.dispatchEvent(new CustomEvent("jarvis:map-start", { detail: { id, label, hasJsKey: hasAmapJsKey() } }));
       // 微任务延迟让 MapWindow 先渲染 loading 卡片，再填数据
@@ -399,23 +417,23 @@ export function useChatController() {
       }, 50);
     }
 
-    // 来源①：对消息文本抽取位置 → maps_geo → 推送 MapWindow
+    // 来源①：对消息文本抽取位置 → maps_geo → 每张地图一个地点（标题用真实地名）
     async function maybeShowMap(text, role) {
       try {
         const cands = extractLocations(text);
         if (!cands.length) return;
-        const mapId = "map-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
-        const allMarkers = [];
         for (const c of cands) {
           try {
             const r = await mcpClient.callTool("maps_geo", { address: c.query });
             if (!r.isError) {
               const mk = parseGeoMarker(r.content, c.text);
-              if (mk) allMarkers.push(mk);
+              if (mk) {
+                const mapId = "map-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+                pushMapToWindow(mapId, mk.label || c.text || "位置标注", [mk], null, c.query);
+              }
             }
           } catch (e) { /* 单条地理编码失败忽略 */ }
         }
-        if (allMarkers.length) pushMapToWindow(mapId, role === "user" ? "你的位置" : "位置标注", allMarkers, null);
       } catch (e) {
         console.warn("[map] maybeShowMap 失败：", e && e.message);
       }
@@ -513,55 +531,78 @@ export function useChatController() {
       return wrap;
     }
 
-    // 影视检索进度：分阶段状态 + 进度条，替代原来“等待→整卡弹出”的突兀感
-    function showMovieProgress(query) {
-      if (window.CyberFx) window.CyberFx.thinking();
-      const wrap = document.createElement("div");
-      wrap.className = "chat-msg ai movie-progress";
-      wrap.innerHTML =
-        '<div class="who">AI · ' + fmtTime(Date.now()) + '</div>' +
-        '<div class="bubble">' +
-          '<div class="mp-head">🔍 影视搜索 · <b>' + escapeHtml(query) + '</b></div>' +
-          '<div class="mp-status"><span class="mp-spin"></span><span class="mp-text">正在连接实时检索代理…</span></div>' +
-          '<div class="mp-bar"><div class="mp-fill"></div></div>' +
+    // —— 影视搜索独立窗口：检索过程时间线 + 工具调用 + 已核验结果 ——
+    let mswAbort = null;
+
+    function ensureMovieSearchWindow() {
+      let root = document.getElementById("movieSearchWindow");
+      if (root) return root;
+      root = document.createElement("div");
+      root.id = "movieSearchWindow";
+      root.className = "msw";
+      root.innerHTML =
+        '<div class="msw-panel" role="dialog" aria-label="影视搜索" data-dev-id="movie-search-window">' +
+          '<div class="msw-head">' +
+            '<div class="msw-title">🔍 影视搜索 · <b id="mswQuery"></b></div>' +
+            '<span class="msw-status" id="mswStatus">就绪</span>' +
+            '<button class="msw-close" id="mswClose" type="button" aria-label="关闭">✕</button>' +
+          '</div>' +
+          '<div class="msw-body">' +
+            '<div class="msw-left">' +
+              '<div class="msw-sect">检索过程 · 工具调用</div>' +
+              '<ol class="msw-timeline" id="mswTimeline"></ol>' +
+              '<div class="msw-verify" id="mswVerify"></div>' +
+            '</div>' +
+            '<div class="msw-right" id="mswResults"></div>' +
+          '</div>' +
         '</div>';
-      messagesEl.appendChild(wrap);
-      scrollBottom();
+      document.body.appendChild(root);
+      root.querySelector("#mswClose").addEventListener("click", closeMovieSearchWindow);
+      makeDraggable(root.querySelector(".msw-panel"), root.querySelector(".msw-head"));
+      return root;
 
-      const STAGES = [
-        "正在连接实时检索代理…",
-        "正在检索资源源（Bing）…",
-        "正在提取磁力 / 网盘直链…",
-        "正在整理并校验结果…",
-      ];
-      let stage = 0;
-      const textEl = wrap.querySelector(".mp-text");
-      const fillEl = wrap.querySelector(".mp-fill");
-      const iv = setInterval(() => {
-        stage = Math.min(stage + 1, STAGES.length - 1);
-        if (textEl) textEl.textContent = STAGES[stage];
-        if (fillEl) fillEl.style.width = ((stage + 1) / STAGES.length) * 100 + "%";
-      }, 650);
-
-      return {
-        done() {
-          clearInterval(iv);
-          if (textEl) textEl.textContent = "检索完成，正在生成结果…";
-          if (fillEl) fillEl.style.width = "100%";
-        },
-        remove() {
-          clearInterval(iv);
-          if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
-        },
-      };
+      // 让弹层像真实窗口一样可拖拽（拖动标题栏切换为 left/top 绝对定位）
+      function makeDraggable(panel, handle) {
+        if (panel.dataset.drag === "1") return;
+        panel.dataset.drag = "1";
+        let dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+        handle.addEventListener("mousedown", (e) => {
+          if (e.target.closest(".msw-close")) return; // 点关闭按钮不触发拖拽
+          dragging = true;
+          const r = panel.getBoundingClientRect();
+          panel.style.left = r.left + "px";
+          panel.style.top = r.top + "px";
+          panel.style.transform = "none"; // 脱离居中 transform，改用 left/top
+          sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+          document.body.style.userSelect = "none";
+          e.preventDefault();
+        });
+        window.addEventListener("mousemove", (e) => {
+          if (!dragging) return;
+          const w = panel.offsetWidth, h = panel.offsetHeight;
+          let nx = ox + (e.clientX - sx);
+          let ny = oy + (e.clientY - sy);
+          nx = Math.max(4, Math.min(nx, window.innerWidth - w - 4));
+          ny = Math.max(4, Math.min(ny, window.innerHeight - h - 4));
+          panel.style.left = nx + "px";
+          panel.style.top = ny + "px";
+        });
+        window.addEventListener("mouseup", () => {
+          if (dragging) { dragging = false; document.body.style.userSelect = ""; }
+        });
+      }
     }
 
-    // 结果逐条淡入：分组内按条目 stagger、组间留间隔，营造“检索中逐渐填充”的真实感
-    function revealMovieResults(bubble) {
-      const root = bubble && bubble.querySelector(".movie-search");
+    function closeMovieSearchWindow() {
+      const root = document.getElementById("movieSearchWindow");
+      if (root) root.classList.remove("msw-open");
+      if (mswAbort) { try { mswAbort.abort(); } catch (e) { /* ignore */ } mswAbort = null; }
+    }
+
+    // 结果逐条淡入（在独立窗口内复用同一套 stagger 逻辑）
+    function revealIn(root) {
       if (!root || !root.classList.contains("ms-revealing")) return;
-      const STAGGER = 45;       // 同组内每条间隔(ms)
-      const GROUP_GAP = 140;    // 组与组之间的额外间隔(ms)
+      const STAGGER = 45, GROUP_GAP = 140;
       let t = 0;
       const targets = [];
       root.querySelectorAll(".ms-group").forEach((g) => {
@@ -570,16 +611,10 @@ export function useChatController() {
         if (head) targets.push({ el: head, at: t });
         if (note) targets.push({ el: note, at: t + 20 });
         const items = g.querySelectorAll(".ms-item");
-        items.forEach((it, i) => {
-          targets.push({ el: it, at: t + 60 + i * STAGGER });
-        });
+        items.forEach((it, i) => targets.push({ el: it, at: t + 60 + i * STAGGER }));
         t += 60 + items.length * STAGGER + GROUP_GAP;
       });
-      root.querySelectorAll(".ms-tips, .ms-warns").forEach((el) => {
-        targets.push({ el, at: t });
-        t += 80;
-      });
-
+      root.querySelectorAll(".ms-tips, .ms-warns").forEach((el) => { targets.push({ el, at: t }); t += 80; });
       if (!targets.length) { root.classList.remove("ms-revealing"); return; }
       let pending = targets.length;
       targets.forEach(({ el, at }) => {
@@ -588,13 +623,85 @@ export function useChatController() {
           if (--pending <= 0) root.classList.remove("ms-revealing");
         }, at);
       });
-      // 安全兜底：异常情况下 4s 后强制全部显示，避免结果停留在隐藏态
       setTimeout(() => {
-        root
-          .querySelectorAll(".ms-gtitle,.ms-gnote,.ms-item,.ms-tips,.ms-warns")
-          .forEach((el) => el.classList.add("ms-show"));
+        root.querySelectorAll(".ms-gtitle,.ms-gnote,.ms-item,.ms-tips,.ms-warns").forEach((el) => el.classList.add("ms-show"));
         root.classList.remove("ms-revealing");
       }, 4000);
+    }
+
+    function openMovieSearchWindow(query) {
+      const root = ensureMovieSearchWindow();
+      root.classList.add("msw-open");
+      if (window.CyberFx) window.CyberFx.thinking();
+
+      const qEl = root.querySelector("#mswQuery");
+      if (qEl) qEl.textContent = query;
+      const tl = root.querySelector("#mswTimeline");
+      tl.innerHTML = "";
+      const vf = root.querySelector("#mswVerify");
+      vf.innerHTML = "";
+      const res = root.querySelector("#mswResults");
+      const statusEl = root.querySelector("#mswStatus");
+      res.innerHTML = '<div class="msw-loading"><span class="mp-spin"></span> 正在初始化检索流水线…</div>';
+      if (statusEl) statusEl.textContent = "初始化…";
+
+      const steps = new Map();
+      const addTool = (ev) => {
+        let li = steps.get(ev.id);
+        if (!li) {
+          li = document.createElement("li");
+          li.className = "msw-step";
+          li.innerHTML =
+            '<span class="msw-dot msw-run"></span>' +
+            '<div class="msw-step-body"><div class="msw-tool"></div><div class="msw-detail"></div></div>';
+          tl.appendChild(li);
+          steps.set(ev.id, li);
+        }
+        li.querySelector(".msw-tool").textContent = ev.name || ev.id;
+        li.querySelector(".msw-detail").textContent = ev.detail || "";
+        const dot = li.querySelector(".msw-dot");
+        dot.className = "msw-dot " + (ev.status === "running" ? "msw-run"
+          : ev.status === "warn" ? "msw-warn"
+          : ev.status === "skip" ? "msw-skip" : "msw-ok");
+        if (statusEl && ev.status === "running") statusEl.textContent = "检索中…";
+      };
+      const setVerify = (p) => {
+        vf.innerHTML =
+          '<div class="msw-vrow"><span class="mp-spin"></span> 已核验 <b>' + p.checked + "</b>/" + p.total +
+          ' · <span class="vk-unknown">待确认 ' + p.unknown + "</span>" +
+          ' · <span class="vk-exp">失效/过期 ' + p.expired + "</span>" +
+          ' · <span class="vk-dead">访问失败 ' + p.dead + "</span></div>";
+        if (statusEl) statusEl.textContent = "核验 " + p.checked + "/" + p.total;
+      };
+      const renderDone = (result) => {
+        res.innerHTML = renderMovieResults(result);
+        revealIn(res.querySelector(".movie-search"));
+        const total = (result.groups || []).reduce((a, g) => a + (g.items ? g.items.length : 0), 0);
+        if (statusEl) statusEl.textContent = "完成 · " + total + " 条";
+        if (window.CyberFx) {
+          window.CyberFx.output();
+          setTimeout(() => { if (window.CyberFx) window.CyberFx.idle(); }, OUTPUT_BURST_MS);
+        }
+      };
+
+      mswAbort = new AbortController();
+      streamMovieSearch(query, mswAbort.signal, {
+        onTool: addTool,
+        onVerify: setVerify,
+        onDone: renderDone,
+        onError: async (msg) => {
+          // 流式失败 → 回退普通 JSON 接口（含离线兜底）
+          try {
+            const fb = await searchMovies(query);
+            addTool({ id: "fallback", name: "检索（非流式回退）", status: "warn", detail: msg || "" });
+            renderDone(fb);
+          } catch (e) {
+            res.innerHTML = '<div class="msw-error">检索失败：' + escapeHtml((e && e.message) || msg || "未知错误") + "</div>";
+            if (statusEl) statusEl.textContent = "失败";
+            if (window.CyberFx) window.CyberFx.idle();
+          }
+        },
+      });
     }
 
     // ---------- 构造请求消息（system + 最近 12 轮历史） ----------
@@ -707,29 +814,9 @@ export function useChatController() {
         return true;
       }
 
-      const progress = showMovieProgress(parsed.query);   // 分阶段“检索中”进度
-      try {
-        const result = await searchMovies(parsed.query);
-        progress.done();
-        // 稍作停顿让进度条走满，再切到结果卡，避免“思考点→整卡”的硬切
-        setTimeout(() => {
-          progress.remove();
-          const bubble = appendRichMessage("ai", renderMovieResults(result));
-          revealMovieResults(bubble);   // 结果逐条淡入
-          if (window.CyberFx) {
-            window.CyberFx.output();
-            setTimeout(() => { if (window.CyberFx) window.CyberFx.idle(); }, OUTPUT_BURST_MS);
-          }
-        }, 350);
-        return true;
-      } catch (e) {
-        progress.remove();
-        const reason = (e && e.message) ? e.message : "未知错误";
-        console.error("[movie-search] 检索失败：", reason);
-        appendMessage("ai", "影视检索失败：" + reason);
-        if (window.CyberFx) window.CyberFx.idle();
-        return true;
-      }
+      // 独立窗口展示：检索过程 / 工具调用时间线 + 已核验结果
+      openMovieSearchWindow(parsed.query);
+      return true;
     }
 
     async function handleSend() {
@@ -746,6 +833,8 @@ export function useChatController() {
       autoGrow();
       updateSend();
       setBusy(true);
+      // 会话开始：通知 MCP 面板清空上一轮的「已用工具」呼吸灯集合
+      window.dispatchEvent(new CustomEvent("jarvis:chat-session-start"));
 
       // —— 影视搜索指令拦截：严格匹配 "@影视搜索 <名称>" ——
       // 命中则跳过 LLM / trace，直接走检索流程；未命中（matched=false）回落普通对话。
@@ -841,7 +930,8 @@ export function useChatController() {
               if (mk) pushMapToWindow(
                 "map-tool-" + (callId || Date.now()),
                 args?.address || "位置标注",
-                [mk], null
+                [mk], null,
+                args?.address || ""
               );
             } else if (/^maps_direction_/.test(name)) {
               const rt = parseRoute(r.content);
@@ -932,6 +1022,8 @@ export function useChatController() {
         if (window.CyberFx) window.CyberFx.idle();
       } finally {
         setBusy(false);
+        // 会话结束：清空 MCP 面板「本轮已用工具」呼吸灯集合（防残留）
+        window.dispatchEvent(new CustomEvent("jarvis:chat-session-end"));
         input.focus();
       }
     }
@@ -1111,6 +1203,13 @@ export function useChatController() {
       });
       // 失焦时收起下拉（延迟以允许下拉项的 mousedown 选中先生效）
       input.addEventListener("blur", () => { setTimeout(closePicker, 120); });
+      // 影视搜索独立窗口：Esc 关闭（不拦截聊天输入框的 Esc）
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          const msw = document.getElementById("movieSearchWindow");
+          if (msw && msw.classList.contains("msw-open")) closeMovieSearchWindow();
+        }
+      });
     }
 
     function init() {

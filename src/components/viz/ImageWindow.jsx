@@ -40,7 +40,15 @@ function openLightbox(url, prompt, meta) {
     ov.className = "img-lightbox";
     ov.setAttribute("data-dev-id", "img-lightbox");
     document.body.appendChild(ov);
-    ov.addEventListener("click", () => ov.classList.remove("open"));
+    // 仅点击遮罩背景本身（非内容区）才关闭
+    ov.addEventListener("click", (e) => {
+      if (e.target === ov) ov.classList.remove("open");
+    });
+    // ESC 关闭灯箱
+    ov._onKey = (e) => {
+      if (e.key === "Escape") ov.classList.remove("open");
+    };
+    document.addEventListener("keydown", ov._onKey);
   }
   ov.innerHTML = "";
   const fig = document.createElement("div");

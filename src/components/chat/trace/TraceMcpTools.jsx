@@ -28,11 +28,22 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
   const toggleExpand = (key) =>
     setExpanded((prev) => ({ ...prev, [key]: !prev[key] }));
 
-  // 截断结果文本用于摘要显示
+  // 过滤掉 @image#N:"..." 等图片引用块（MCP 工具返回可能内嵌图片标记）
+  const sanitize = (text) => {
+    if (!text) return text;
+    const s = typeof text === "string" ? text : JSON.stringify(text);
+    return s.replace(/@image#\d+:\s*"[^"]*"/g, "").replace(/\s{2,}/g, " ").trim();
+  };
+  // 安全显示任意 MCP 文本字段（name/server/result/args 统一过滤）
+  const safeText = (val) => {
+    if (!val) return "";
+    return sanitize(typeof val === "string" ? val : JSON.stringify(val));
+  };
   const summarize = (result) => {
     if (!result) return "—";
     const text = typeof result === "string" ? result : JSON.stringify(result);
-    return text.length > 80 ? text.slice(0, 80) + "…" : text;
+    const clean = sanitize(text);
+    return clean.length > 80 ? clean.slice(0, 80) + "…" : clean || "—";
   };
 
   return (
@@ -67,8 +78,10 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
             <div className="trace-empty">（本次对话未触发任何工具调用）</div>
           ) : (
             invocations.map((inv, i) => {
-              const key = inv.callId || `tool-${i}`;
-              const exp = !!expanded[key];
+              // callId 在每个 LLM 回合会重置（call_0/call_1…），跨回合会重复，
+              // 拼上数组下标保证 React key 全局唯一，避免 duplicate-key 警告。
+              const key = `${inv.callId || `tool-${i}`}__${i}`;
+              const exp = !!expanded[inv.callId || `tool-${i}`];
               return (
                 <div className="trace-tool" key={key}>
                   <div
@@ -77,8 +90,8 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
                     style={{ cursor: "pointer" }}
                   >
                     <span className="trace-tool-idx">{i + 1}</span>
-                    <span className="trace-tool-name">{inv.name}</span>
-                    {inv.server && <span className="trace-tool-server">@{inv.server}</span>}
+                    <span className="trace-tool-name">{safeText(inv.name)}</span>
+                    {inv.server && <span className="trace-tool-server">@{safeText(inv.server)}</span>}
                     {inv.isError && <span className="trace-tool-err">失败</span>}
                     <span className="trace-tool-toggle">{exp ? "▼ 收起" : "▶ 详情"}</span>
                   </div>
@@ -98,13 +111,13 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
                         入参
                         <CopyButton text={JSON.stringify(inv.args ?? {}, null, 2)} />
                       </div>
-                      <pre className="trace-code">{JSON.stringify(inv.args ?? {}, null, 2)}</pre>
+                      <pre className="trace-code">{safeText(JSON.stringify(inv.args ?? {}, null, 2))}</pre>
                       <div className="trace-sub">
                         返回（完整）
                         <CopyButton text={typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)} />
                       </div>
                       <pre className={`trace-code${inv.isError ? " err" : ""}`}>
-                        {typeof inv.result === "string" ? inv.result : JSON.stringify(inv.result ?? "", null, 2)}
+                        {sanitize(inv.result)}
                       </pre>
                     </>
                   )}

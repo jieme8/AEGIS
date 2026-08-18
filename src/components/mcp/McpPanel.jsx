@@ -32,7 +32,7 @@ function LoadingDots({ label }) {
   );
 }
 
-function McpRow({ s, client, onOpenMemory, callingTool }) {
+function McpRow({ s, client, onOpenMemory, callingTool, usedTools = [] }) {
   const meta = STATUS_META[s.status] || STATUS_META.connecting;
   const usable = s.status === "connected";
   const isMemory = s.name === "memory" && usable && client;
@@ -77,9 +77,17 @@ function McpRow({ s, client, onOpenMemory, callingTool }) {
       {s.error && <div className="mcp-err">⚠ {s.error}</div>}
       {s.tools && s.tools.length > 0 && (
         <div className="mcp-tools">
-          {s.tools.map((t) => (
-            <span className={"mcp-tool" + (callingTool === t ? " mcp-tool-calling" : "")} key={t}>{t}</span>
-          ))}
+          {s.tools.map((t) => {
+            const isCall = callingTool === t;
+            const isUsed = !isCall && usedTools.includes(t);
+            const cls =
+              "mcp-tool" +
+              (isCall ? " mcp-tool-calling" : "") +
+              (isUsed ? " mcp-tool-used" : "");
+            return (
+              <span className={cls} key={t}>{t}</span>
+            );
+          })}
         </div>
       )}
       {isMemory && (
@@ -355,8 +363,10 @@ export function McpPanel({ open, onClose }) {
   const clientRef = useRef(null);
   if (!clientRef.current) clientRef.current = new MCPClient();
   const [memOpen, setMemOpen] = useState(false);
-  // 呼吸灯：记录当前正在调用的工具名
+  // 呼吸灯：记录当前正在调用的工具名（瞬时）
   const [callingTool, setCallingTool] = useState(null);
+  // 本轮会话「已调用过的工具」集合：会话期间持续呼吸灯，至下次会话开始清空
+  const [usedTools, setUsedTools] = useState([]);
 
   const fetchStatus = async () => {
     try {
@@ -379,18 +389,34 @@ export function McpPanel({ open, onClose }) {
     return () => clearInterval(timer);
   }, [open]);
 
-  // 呼吸灯：监听 MCP 工具调用开始/结束事件
+  // 呼吸灯：监听 MCP 工具调用开始/结束 + 聊天会话边界
   useEffect(() => {
-    const onStart = (e) => setCallingTool((e && e.detail && e.detail.name) || null);
-    const onEnd = (e) => setCallingTool((prev) => {
+    const onStart = (e) => {
       const name = (e && e.detail && e.detail.name) || null;
-      return prev === name ? null : prev;
-    });
+      if (!name) return;
+      setCallingTool(name);
+      // 记入本轮「已用工具」集合（不随调用结束移除 → 持续呼吸灯）
+      setUsedTools((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    };
+    const onEnd = (e) => {
+      const name = (e && e.detail && e.detail.name) || null;
+      setCallingTool((prev) => (prev === name ? null : prev));
+    };
+    // 会话开始 / 结束：清空「已用工具」集合，使呼吸灯重置
+    const onSessionStart = () => {
+      setUsedTools([]);
+      setCallingTool(null);
+    };
+    const onSessionEnd = () => setUsedTools([]);
     window.addEventListener("jarvis:mcp-tool-start", onStart);
     window.addEventListener("jarvis:mcp-tool-end", onEnd);
+    window.addEventListener("jarvis:chat-session-start", onSessionStart);
+    window.addEventListener("jarvis:chat-session-end", onSessionEnd);
     return () => {
       window.removeEventListener("jarvis:mcp-tool-start", onStart);
       window.removeEventListener("jarvis:mcp-tool-end", onEnd);
+      window.removeEventListener("jarvis:chat-session-start", onSessionStart);
+      window.removeEventListener("jarvis:chat-session-end", onSessionEnd);
     };
   }, []);
 
@@ -479,6 +505,7 @@ export function McpPanel({ open, onClose }) {
             client={clientRef.current}
             onOpenMemory={s.name === "memory" ? () => setMemOpen(true) : undefined}
             callingTool={callingTool}
+            usedTools={usedTools}
           />
         ))}
       </div>

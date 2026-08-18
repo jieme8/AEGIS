@@ -270,6 +270,56 @@ export async function searchMovies(query, { timeoutMs = 15000 } = {}) {
   }
 }
 
+/**
+ * 影视检索（SSE 流式）：读取 /api/moviesearch/stream 的事件流，
+ * 逐事件回调 onTool / onVerify / onDone / onError，供独立窗口展示检索过程与工具调用。
+ * 若流在标准结束前断开且未收到 done，则回调 onError 触发回退。
+ * @param {string} query
+ * @param {AbortSignal} signal  用于关闭窗口时中断
+ * @param {{onTool?:Function,onVerify?:Function,onDone?:Function,onError?:Function}} handlers
+ */
+export async function streamMovieSearch(query, signal, handlers) {
+  const enc = encodeURIComponent;
+  const dispatch = (ev) => {
+    if (ev.type === "tool") handlers.onTool && handlers.onTool(ev);
+    else if (ev.type === "verify") handlers.onVerify && handlers.onVerify(ev);
+    else if (ev.type === "done") handlers.onDone && handlers.onDone(ev.result);
+    else if (ev.type === "error") handlers.onError && handlers.onError(ev.message);
+  };
+  try {
+    const res = await fetch(`/api/moviesearch/stream?q=${enc(query)}`, { signal });
+    if (!res.ok || !res.body) throw new Error("流式检索不可用（HTTP " + res.status + "）");
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    let doneReceived = false;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf("\n\n")) >= 0) {
+        const chunk = buf.slice(0, nl);
+        buf = buf.slice(nl + 2);
+        const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
+        if (!dataLine) continue;
+        const payload = dataLine.slice(5).trim();
+        if (!payload) continue;
+        let ev;
+        try { ev = JSON.parse(payload); } catch { continue; }
+        if (ev.type === "done") doneReceived = true;
+        dispatch(ev);
+      }
+    }
+    if (!doneReceived && !(signal && signal.aborted)) {
+      handlers.onError && handlers.onError("检索流意外结束，未返回结果");
+    }
+  } catch (e) {
+    if (signal && signal.aborted) return; // 用户主动关闭，静默
+    handlers.onError && handlers.onError(e && e.message ? e.message : "流式检索失败");
+  }
+}
+
 /** 把结构化结果转为纯文本（用于历史持久化 / 复制）。 */
 export function resultToPlainText(result) {
   if (!result) return "";
@@ -334,7 +384,7 @@ export function renderMovieResults(result) {
   );
 }
 
-/** 直链项（磁力 / 网盘）：完整明文 + 提取码（若有）+ 一键复制。 */
+/** 直链项（磁力 / 网盘）：完整明文 + 提取码（若有）+ 一键复制 + 核验徽标。 */
 function renderDirectItem(it) {
   const url = safeUrl(it.url);
   const href = url || "#";
@@ -347,11 +397,29 @@ function renderDirectItem(it) {
     : "";
   const rating = escapeHtml(it.rating || "需验证");
   const rc = ratingClass(it.rating);
+
+  // —— 核验徽标（后端逐条核验后的状态）——
+  const VR = {
+    live:         ["ms-vr-live", "✅ 已核验可访问"],
+    unknown:      ["ms-vr-unknown", "⚠️ 待客户端确认"],
+    expired:      ["ms-vr-exp", "❌ 疑似失效/过期"],
+    dead:         ["ms-vr-dead", "❌ 访问失败"],
+    unverifiable: ["ms-vr-info", "❓ 需客户端核验"],
+  };
+  let badge = "";
+  let vrClass = "";
+  if (it.verified && VR[it.verified.status]) {
+    const [cls, label] = VR[it.verified.status];
+    vrClass = " ms-vr-" + it.verified.status;
+    badge = `<span class="ms-vr ${cls}" title="${escapeHtml(it.verified.note || "")}">${label}</span>`;
+  }
+
   return (
-    `<li class="ms-item ms-direct">` +
+    `<li class="ms-item ms-direct${vrClass}">` +
     `<a class="ms-link ${isPan ? "ms-pan" : "ms-magnet"}" href="${escapeHtml(href)}"${target}>${linkText}</a>` +
     `<span class="ms-copy" data-label="复制" data-copy="${copyAttr}" onclick="window.__copyMovieLink(this, this.getAttribute('data-copy'))">复制</span>` +
     `<span class="ms-rating ${rc}">${rating}</span>` +
+    badge +
     codeLine +
     `</li>`
   );

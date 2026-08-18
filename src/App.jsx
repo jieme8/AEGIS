@@ -22,6 +22,7 @@ import { ImageWindow } from "./components/viz/ImageWindow.jsx";
 import { MapWindow } from "./components/viz/MapWindow.jsx";
 import { MapErrorBoundary } from "./components/viz/MapErrorBoundary.jsx";
 import { FeatureListWindow } from "./components/viz/FeatureListWindow.jsx";
+import { FlowDiagramWindow } from "./components/viz/FlowDiagramWindow.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
@@ -50,13 +51,15 @@ export default function App() {
   // bootGone=遮罩已退场可卸载。
   const [booted, setBooted] = useState(false);
   const [bootGone, setBootGone] = useState(false);
-  // MCP 浮层默认开启：按需求直接展示服务器列表（不再默认隐藏）。
+  // MCP 浮层默认显示：用户要求启动即展示服务器列表，并实时反映本轮会话用到的工具。
   const [mcpOpen, setMcpOpen] = useState(true);
   const [activeTask, setActiveTask] = useState("task-image");
-  // 地图浮窗独立开关（与 activeTask 解耦，地图可独立开合）；默认打开
-  const [mapOpen, setMapOpen] = useState(true);
+  // 地图浮窗独立开关（与 activeTask 解耦，地图可独立开合）；默认关闭
+  const [mapOpen, setMapOpen] = useState(false);
   // 功能清单浮窗独立开关（与 activeTask 解耦，开清单不再误关配图窗）
   const [featuresOpen, setFeaturesOpen] = useState(false);
+  // 功能流程图浮窗独立开关（与清单同范式，默认关闭、非侵入）
+  const [flowOpen, setFlowOpen] = useState(false);
   // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -161,6 +164,9 @@ export default function App() {
       {/* 独立功能清单窗口：枚举 chat-panel 所有附加功能及其开启状态 */}
       <FeatureListWindow open={featuresOpen} onClose={() => setFeaturesOpen(false)} />
 
+      {/* 独立功能流程图窗口：SVG 渲染各管线数据流，节点可复制源码锚点 */}
+      <FlowDiagramWindow open={flowOpen} onClose={() => setFlowOpen(false)} />
+
       {/* 设置窗口：语言模型 / 生图模型 / 生图比例 三个切换器迁入此处 */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
@@ -172,7 +178,7 @@ export default function App() {
       <div className="oil-dock">
         <OilPricePanel
           booted={booted}
-          data={{ name: "上海 92# 汽油", unit: "¥", price: 7.93, prevClose: 7.38 }}
+          data={{ name: "92# 汽油", unit: "元/升", price: 7.79, prevClose: 7.98 }}
           forecast={{ direction: "down", text: "预计小幅下调" }}
         />
       </div>
@@ -185,6 +191,8 @@ export default function App() {
         mapOpen={mapOpen}
         onToggleFeatures={() => setFeaturesOpen((v) => !v)}
         featuresOpen={featuresOpen}
+        onToggleFlow={() => setFlowOpen((v) => !v)}
+        flowOpen={flowOpen}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsOpen={settingsOpen}
       />

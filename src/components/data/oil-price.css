@@ -6,8 +6,9 @@
    本版在信息完整、可读、不重叠的前提下适度压缩尺寸。
    ========================================================= */
 .oil {
-  /* 直接复用主页 token，带兜底值（脱离主页单独运行也同款外观） */
-  width: min(390px, 93vw);
+  /* 直接复用主页 token，带兜底值（脱离主页单独运行也同款外观）。
+     宽度改为跟随父容器最大 390px，避免在 .oil-dock 限宽时被截断/溢出。 */
+  width: min(390px, 100%);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -52,11 +53,12 @@
            margin: 2px 0; }                                           /* 上下留短边不顶满 */
 
 /* 右侧信息（调价 + 预估），复用 .k / .v 语言 */
-.oil-info { display: flex; flex-direction: column; gap: 3px; margin-left: auto; flex: 0 0 auto; }
+.oil-info { display: flex; flex-direction: column; gap: 3px; margin-left: auto; flex: 1 1 auto; min-width: 0; }
 .oil-row { display: flex; align-items: center; gap: 5px; white-space: nowrap; line-height: 1.15; }
-.oil-k { font-size: 9px; letter-spacing: 0.6px; color: var(--dim, #4a6b80); }   /* 对齐 .k */
-.oil-v { font-size: 10px; line-height: 1.15; color: var(--cyan, #00f0ff);        /* 对齐 .v */
-         font-variant-numeric: tabular-nums; text-shadow: 0 0 6px rgba(0,240,255,0.5); }
+.oil-k { font-size: 9px; letter-spacing: 0.6px; color: var(--dim, #4a6b80); flex: 0 0 auto; }   /* 对齐 .k */
+.oil-v { font-size: 10px; line-height: 1.15; color: var(--cyan, #00f0ff); min-width: 0;        /* 对齐 .v */
+         font-variant-numeric: tabular-nums; text-shadow: 0 0 6px rgba(0,240,255,0.5);
+         white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .oil-v.up   { color: var(--oil-up, #ff5470);   text-shadow: 0 0 5px rgba(255,84,112,0.45); }
 .oil-v.down { color: var(--oil-down, #2fe6a0); text-shadow: 0 0 5px rgba(47,230,160,0.45); }
 .oil-v.hold { color: var(--dim, #4a6b80); }
@@ -65,3 +67,33 @@
 /* 仅「显示组件ID」(dev-mode) 时可拖动：编辑态光标反馈 */
 .oil-draggable { cursor: grab; }
 .oil-draggable.oil-dragging { cursor: grabbing; }
+
+/* 「调价」行兜底：保持单行（高度固定），超出时尾部省略号截断，不换行 */
+.oil-row--adjust { flex-wrap: nowrap; }
+.oil-row--adjust .oil-v { white-space: nowrap; }
+.oil-row--adjust .oil-dim { white-space: nowrap; }
+
+/* =========================================================
+   响应式收敛：当 .oil-dock 被限宽时，防止油价卡内部横向溢出
+   ========================================================= */
+@media (max-width: 1099px) {
+  .oil { gap: 6px; padding: 6px 9px; }
+  .oil-price { font-size: clamp(17px, 4.5vw, 20px); }
+  .oil-price .unit { font-size: 8px; }
+  .oil-chg { font-size: 10px; gap: 2px; margin-left: 0; }
+  .oil-info { gap: 2px; }
+  .oil-row { gap: 4px; }
+  .oil-k { font-size: 8px; }
+  .oil-v { font-size: 9px; }
+}
+
+@media (max-width: 640px) {
+  /* 容器过窄时：右侧信息区换到第二行（外层 .oil 换行，但行内文字仍单行截断，不换行） */
+  .oil { flex-wrap: wrap; padding: 6px 8px; }
+  .oil-main { flex: 1 1 auto; min-width: 0; }
+  .oil-chg { margin-left: auto; }
+  .oil-sep { display: none; }
+  .oil-info { flex: 1 1 100%; margin-left: 0; gap: 2px; }
+  /* 行内保持 nowrap，靠 .oil-v 的 ellipsis 截断，不改变单行高度 */
+  .oil-row { white-space: nowrap; }
+}
