@@ -16,6 +16,112 @@
  *   - maps_geo("东方明珠")      → 邵阳住宅区 (111.47, 27.23)
  * 因此建议先走 parseTextSearch + parseSearchDetail 再回退 maps_geo（见 maybeShowMap）。
  */
+/**
+ * 城市名 → 中心点（GCJ-02）。
+ * 来源：高德公开城区大致中心，用于"marker 是否落在合理城市范围内"的距离门限判断。
+ * 注意：广州/重庆/武汉/长沙等，因当前 KNOWN_CITY 不含，暂不列入（不挡）。
+ */
+export const CITY_CENTERS = {
+  上海: { lng: 121.4737, lat: 31.2304 },
+  北京: { lng: 116.4074, lat: 39.9042 },
+  天津: { lng: 117.2008, lat: 39.0842 },
+  广州: { lng: 113.2644, lat: 23.1291 },
+  深圳: { lng: 114.0579, lat: 22.5431 },
+  杭州: { lng: 120.1551, lat: 30.2741 },
+  南京: { lng: 118.7969, lat: 32.0603 },
+  苏州: { lng: 120.5853, lat: 31.2989 },
+  成都: { lng: 104.0668, lat: 30.5728 },
+  武汉: { lng: 114.3055, lat: 30.5928 },
+  西安: { lng: 108.9402, lat: 34.3416 },
+  厦门: { lng: 118.0894, lat: 24.4798 },
+  青岛: { lng: 120.3826, lat: 36.0671 },
+  昆明: { lng: 102.8329, lat: 24.8801 },
+  大理: { lng: 100.2257, lat: 25.5916 },
+  丽江: { lng: 100.2336, lat: 26.8721 },
+  三亚: { lng: 109.5119, lat: 18.2528 },
+  海口: { lng: 110.3312, lat: 20.0311 },
+  拉萨: { lng: 91.1322, lat: 29.6604 },
+  兰州: { lng: 103.8343, lat: 36.0611 },
+  西宁: { lng: 101.7782, lat: 36.6171 },
+  乌鲁木齐: { lng: 87.6168, lat: 43.8256 },
+  贵阳: { lng: 106.7135, lat: 26.5783 },
+  南宁: { lng: 108.3669, lat: 22.8170 },
+  石家庄: { lng: 114.5149, lat: 38.0428 },
+  太原: { lng: 112.5489, lat: 37.8706 },
+  呼和浩特: { lng: 111.7519, lat: 40.8414 },
+  银川: { lng: 106.2309, lat: 38.4872 },
+  南昌: { lng: 115.8921, lat: 28.6765 },
+  沈阳: { lng: 123.4315, lat: 41.8057 },
+  大连: { lng: 121.6147, lat: 38.9140 },
+  哈尔滨: { lng: 126.5350, lat: 45.8023 },
+  长春: { lng: 125.3245, lat: 43.8868 },
+  无锡: { lng: 120.3119, lat: 31.4912 },
+  佛山: { lng: 113.1216, lat: 23.0218 },
+  东莞: { lng: 113.7518, lat: 23.0207 },
+  桂林: { lng: 110.2900, lat: 25.2740 },
+};
+
+const EARTH_KM = 6371.0088;
+function _haversineKm(a, b) {
+  const toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat), lat2 = toRad(b.lat);
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * EARTH_KM * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+/**
+ * 距离门限（km）：marker 距离期望城市中心 > MAX_KM 视为异常（跨省同名误匹配）。
+ * 上海/北京/广州这类大市用 80km；其它城市可适当放宽。
+ */
+const MAX_KM_BIG = 80;        // 北京/上海/广州/深圳/天津/重庆/杭州/南京/成都/武汉/西安
+const MAX_KM_NORMAL = 60;     // 中等城市
+
+const BIG_CITY = new Set(["上海", "北京", "广州", "深圳", "天津", "重庆", "杭州", "南京", "成都", "武汉", "西安"]);
+
+/**
+ * 校验 marker 坐标是否"足够近"期望城市中心。
+ * 用法：返回一个判断结果对象，不修改 marker（不破坏流水线）。
+ *
+ * @param {{lng:number, lat:number}} marker
+ * @param {string|null} expectedCity 期望城市（caller 从 text/ctx/query 推断出来的 KNOWN_CITY 之一）
+ * @returns {{ ok:boolean, distanceKm?:number, reason?:string }}
+ */
+export function validateAgainstCity(marker, expectedCity) {
+  if (!marker || typeof marker.lng !== "number" || typeof marker.lat !== "number") {
+    return { ok: false, reason: "marker 缺少经纬度" };
+  }
+  if (!expectedCity) return { ok: true }; // 无期望城市 → 不挡（保守放行）
+  const center = CITY_CENTERS[expectedCity];
+  if (!center) return { ok: true }; // 不在已知表中 → 不挡
+  const d = _haversineKm({ lng: marker.lng, lat: marker.lat }, center);
+  const limit = BIG_CITY.has(expectedCity) ? MAX_KM_BIG : MAX_KM_NORMAL;
+  if (d > limit) {
+    return { ok: false, distanceKm: d, reason: `与期望城市 ${expectedCity} 相距 ${d.toFixed(1)}km（>${limit}km 阈值）` };
+  }
+  return { ok: true, distanceKm: d };
+}
+
+/**
+ * 从一段自由文本里猜"上下文城市"：返回第一个出现且 CITY_CENTERS 已知的 KNOWN_CITY。
+ * 用于"ctx+text 里多数出现上海，但某个 query 不以'上海'开头"时，给 cityArg 兜底。
+ * @param {string} text
+ * @returns {string|null}
+ */
+export function guessContextCity(text) {
+  if (!text || typeof text !== "string") return null;
+  // 按"KNOWN_CITY 出现顺序"扫一遍，命中即返回（兼顾最早出现通常最重要）。
+  // 注：与 KNOWN_CITY 列表解耦，这里直接引用 locationExtractor 的 KNOWN_CITY（避免重复定义）。
+  // 为避免循环依赖，这里维护一个简短的子集（仅含 CITY_CENTERS 有条目的城市）。
+  for (const city of Object.keys(CITY_CENTERS)) {
+    if (text.includes(city)) return city;
+  }
+  return null;
+}
+
 export function parseGeoMarker(content, label) {
   if (!content || typeof content !== "string") return null;
   let obj = null;

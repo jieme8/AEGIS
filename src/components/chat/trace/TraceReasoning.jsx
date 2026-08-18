@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LoadingDots, useContentPulse } from "./shared.jsx";
+import { LoadingDots, useContentPulse, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -42,7 +42,10 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
           ) : streaming ? (
             <LoadingDots label="模型思考中…" />
           ) : (
-            <div className="trace-empty">（无思考过程 / reasoning_content 为空）</div>
+            <TraceIdle
+              title="思考过程 · 待机"
+              sub="模型开始思考后，推理链会实时滚动显示在这里。"
+            />
           )}
         </div>
       </details>

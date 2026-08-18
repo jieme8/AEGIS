@@ -512,25 +512,49 @@
   .iw-body::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.5); }
   .iw-empty {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 12px; text-align: center;
-    color: var(--dim); padding: 36px 18px; margin: auto 0;
+    gap: 10px; text-align: center;
+    color: var(--dim); padding: 30px 18px; margin: auto 0;
   }
-  .iw-empty-icon {
-    width: 58px; height: 58px; opacity: .55;
-    fill: none; stroke: var(--cyan); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round;
-    filter: drop-shadow(0 0 6px rgba(0,240,255,0.35));
-    animation: iw-empty-pulse 2.4s ease-in-out infinite;
+  /* —— 科技感待机雷达：脉冲环 + 旋转扫描 + 呼吸核心 —— */
+  .iw-empty-orbit {
+    position: relative; width: 134px; height: 134px; margin-bottom: 4px;
   }
-  @keyframes iw-empty-pulse {
-    0%, 100% { opacity: .4; transform: translateY(0); }
-    50% { opacity: .75; transform: translateY(-2px); }
+  .iw-empty-orbit .iw-ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(0,240,255,0.28);
+    animation: iw-empty-ring 2.8s ease-out infinite;
   }
+  .iw-empty-orbit .iw-ring.r2 { inset: 24px; animation-delay: .6s; border-color: rgba(0,240,255,0.36); }
+  .iw-empty-orbit .iw-ring.r3 { inset: 48px; animation-delay: 1.2s; border-color: rgba(177,75,255,0.42); }
+  @keyframes iw-empty-ring {
+    0% { transform: scale(.82); opacity: .9; }
+    70% { transform: scale(1.14); opacity: .12; }
+    100% { transform: scale(1.14); opacity: 0; }
+  }
+  .iw-empty-orbit .iw-sweep {
+    position: absolute; inset: 8px; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      rgba(0,240,255,0) 0deg, rgba(0,240,255,0) 295deg,
+      rgba(0,240,255,0.05) 320deg, rgba(0,240,255,0.5) 358deg, rgba(0,240,255,0) 360deg);
+    -webkit-mask: radial-gradient(circle, transparent 53%, #000 54%);
+            mask: radial-gradient(circle, transparent 53%, #000 54%);
+    animation: iw-empty-spin 2.4s linear infinite;
+  }
+  @keyframes iw-empty-spin { to { transform: rotate(360deg); } }
+  .iw-empty-orbit .iw-core {
+    position: absolute; left: 50%; top: 50%; width: 13px; height: 13px; margin: -6.5px 0 0 -6.5px;
+    border-radius: 50%; background: var(--cyan);
+    box-shadow: 0 0 14px rgba(0,240,255,0.9), 0 0 30px rgba(0,240,255,0.5);
+    animation: iw-empty-blink 1.5s ease-in-out infinite;
+  }
+  @keyframes iw-empty-blink { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .3; transform: scale(.65); } }
   .iw-empty-title {
-    font-size: 13px; letter-spacing: 2px; color: var(--cyan); font-weight: 600;
-    text-shadow: 0 0 8px rgba(0,240,255,0.35);
+    font-size: 14px; letter-spacing: 1.5px; color: var(--cyan); font-weight: 600;
+    text-shadow: 0 0 12px rgba(0,240,255,0.45);
   }
-  .iw-empty-hint {
-    font-size: 11px; line-height: 1.9; color: var(--dim); opacity: .85;
+  .iw-empty-status {
+    font-family: var(--mono); font-size: 10.5px; color: var(--magenta);
+    letter-spacing: .5px; opacity: .85;
   }
   .iw-card {
     background: rgba(0,240,255,0.06); border: 1px solid rgba(0,240,255,0.28);
@@ -1355,6 +1379,11 @@
   .float-panel.enter { animation: float-in .38s cubic-bezier(.2,.85,.25,1) backwards; }
   .float-panel.exit  { animation: float-out .32s cubic-bezier(.5,0,.2,1) forwards; pointer-events: none; }
   .float-panel.dragging { cursor: grabbing; }
+  /* 网页查看器浮层置顶（高于其它浮层）：用户指定 z-index 71 */
+  .float-panel[data-dev-id^="web-viewer"] { z-index: 71; }
+  /* 网页查看器：内部 iframe 与外框无缝贴合（去掉通用浮层的 body 内边距） */
+  .float-panel[data-dev-id^="web-viewer"] .float-body { padding: 0; gap: 0; }
+  .float-panel[data-dev-id^="web-viewer"] .wv-frame-wrap { min-height: 0; }
 
   .float-head {
     position: relative; overflow: hidden;
@@ -1400,9 +1429,33 @@
     line-height: 1; cursor: pointer; transition: background .15s;
   }
   .float-close:hover { background: rgba(0,240,255,0.15); }
+  /* 网页查看器：标题栏「网址」右侧的「在浏览器打开」按钮 */
+  .wv-head-open {
+    width: 22px; height: 22px; flex: 0 0 auto; margin-right: 6px;
+    border: 1px solid rgba(0,240,255,0.3); border-radius: 5px;
+    background: transparent; color: var(--cyan); font-size: 14px; line-height: 1;
+    cursor: pointer; transition: background .15s;
+  }
+  .wv-head-open:hover { background: rgba(0,240,255,0.15); }
   .float-body { flex: 1 1 auto; min-height: 0; padding: 8px 10px; overflow-y: auto; display: flex; flex-direction: column; gap: 7px; }
   .float-body::-webkit-scrollbar { width: 6px; }
-  .float-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  .float-body::-webkit-scrollbar-thumb { background: rgba(0,240,255, 0.3); border-radius: 6px; }
+
+  /* ===================== 网页查看器 (WebViewerWindow) ===================== */
+  /* 地址栏 / 刷新 / 在浏览器打开 控件已按需求移除：窗口仅含标题栏 + 关闭 + iframe */
+  .wv-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(0,240,255,0.55); font-size: 13px; letter-spacing: 1px; text-shadow: 0 0 8px rgba(0,240,255,0.4); }
+  .wv-frame-wrap { position: relative; flex: 1 1 auto; min-height: 320px; background: #0a0e16; }
+  .wv-frame { width: 100%; height: 100%; border: 0; background: #fff; display: block; }
+  .wv-boot {
+    position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: rgba(6,11,22,0.96); overflow: hidden; gap: 14px;
+  }
+  .wv-boot-scan {
+    position: absolute; left: 0; right: 0; height: 2px; background: linear-gradient(90deg, transparent, rgba(0,240,255,0.95), transparent);
+    background-size: 40% 100%; background-repeat: no-repeat; animation: wv-scan 1s linear infinite;
+  }
+  .wv-boot-text { color: rgba(0,240,255,0.9); font-size: 13px; letter-spacing: 1px; text-shadow: 0 0 8px rgba(0,240,255,0.5); }
+  @keyframes wv-scan { 0% { background-position: -40% 0; } 100% { background-position: 140% 0; } }
 
   .trace-section { border: 1px solid rgba(0,240,255,0.18); border-radius: 8px; background: rgba(8,14,26,0.5); overflow: hidden; }
   .trace-section > summary {
@@ -1457,8 +1510,71 @@
     color: #ffcf4d; border-color: rgba(255,207,77,0.4); background: rgba(255,207,77,0.06);
   }
   .trace-empty.warn::before { content: "!"; color: #ffcf4d; font-weight: 700; }
+
+  /* 各 trace 浮层空数据时的动画待机态（雷达脉冲环 + 旋转扫描 + 呼吸核心点） */
+  .trace-idle {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; text-align: center; padding: 26px 14px;
+  }
+  .tidle-orbit {
+    position: relative; width: 56px; height: 56px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tidle-ring {
+    position: absolute; inset: 0; border-radius: 50%;
+    border: 1px solid rgba(0,240,255,0.4);
+    animation: tidle-pulse 2.6s ease-out infinite;
+  }
+  .tidle-ring.r2 { animation-delay: 1.3s; }
+  @keyframes tidle-pulse {
+    0% { transform: scale(0.42); opacity: 0.85; }
+    100% { transform: scale(1); opacity: 0; }
+  }
+  .tidle-sweep {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 0deg,
+      rgba(0,240,255,0) 0deg, rgba(0,240,255,0.55) 42deg, rgba(0,240,255,0) 90deg);
+    -webkit-mask: radial-gradient(circle, transparent 50%, #000 52%);
+    mask: radial-gradient(circle, transparent 50%, #000 52%);
+    animation: tidle-spin 2.4s linear infinite;
+  }
+  @keyframes tidle-spin { to { transform: rotate(360deg); } }
+  .tidle-core {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--cyan); box-shadow: 0 0 10px var(--cyan);
+    animation: tidle-breathe 1.8s ease-in-out infinite;
+  }
+  @keyframes tidle-breathe {
+    0%, 100% { transform: scale(0.7); opacity: 0.6; }
+    50% { transform: scale(1.12); opacity: 1; }
+  }
+  .tidle-title {
+    font-size: 13px; letter-spacing: 1.5px; color: var(--cyan); font-weight: 600;
+    text-shadow: 0 0 10px rgba(0,240,255,0.4);
+  }
+  .tidle-sub {
+    font-size: 10.5px; line-height: 1.7; color: rgba(200,220,235,0.7); max-width: 240px;
+  }
+  /* 变体：未启用（暗青） */
+  .trace-idle.muted .tidle-ring { border-color: rgba(0,240,255,0.22); }
+  .trace-idle.muted .tidle-sweep {
+    background: conic-gradient(from 0deg,
+      rgba(0,240,255,0) 0deg, rgba(0,240,255,0.28) 42deg, rgba(0,240,255,0) 90deg);
+  }
+  .trace-idle.muted .tidle-core { background: rgba(0,240,255,0.55); box-shadow: 0 0 8px rgba(0,240,255,0.35); }
+  .trace-idle.muted .tidle-title { color: rgba(0,240,255,0.7); text-shadow: none; }
+  /* 变体：异常（琥珀） */
+  .trace-idle.warn .tidle-ring { border-color: rgba(255,207,77,0.45); }
+  .trace-idle.warn .tidle-sweep {
+    background: conic-gradient(from 0deg,
+      rgba(255,207,77,0) 0deg, rgba(255,207,77,0.55) 42deg, rgba(255,207,77,0) 90deg);
+  }
+  .trace-idle.warn .tidle-core { background: #ffcf4d; box-shadow: 0 0 10px #ffcf4d; }
+  .trace-idle.warn .tidle-title { color: #ffcf4d; text-shadow: 0 0 10px rgba(255,207,77,0.4); }
   .trace-code::-webkit-scrollbar { width: 6px; height: 6px; }
+  .trace-code::-webkit-scrollbar-track { background: transparent; }
   .trace-code::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  .trace-code::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.5); }
 
   .trace-copy {
     flex: 0 0 auto; font-size: 9px; letter-spacing: .5px; padding: 1px 6px;
@@ -2242,7 +2358,7 @@
     position: fixed; left: 130px; top: 330px; right: auto; bottom: auto;
     width: 420px; height: 500px;
     z-index: 70; display: flex; flex-direction: column;
-    background: rgba(6,10,18,0.92);
+    background: rgba(6,10,18,0.7);
     border: 1px solid rgba(0,240,255,0.42);
     box-shadow: 0 0 55px rgba(0,240,255,0.15), inset 0 0 30px rgba(0,240,255,0.05);
     backdrop-filter: blur(9px); border-radius: 10px; overflow: hidden;
@@ -2499,7 +2615,7 @@
 
   /* —— 独立「功能清单」窗口（只读清单，实时反映附加功能开启状态） —— */
   .feat-window {
-    position: fixed; left: 980px; top: 80px; right: auto; bottom: auto;
+    position: fixed; left: 480px; top: 340px; right: auto; bottom: auto;
     width: 340px; height: 460px;
     z-index: 70; display: flex; flex-direction: column;
     background: rgba(6,10,18,0.9);

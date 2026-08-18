@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { CopyButton, useContentPulse } from "./shared.jsx";
+import { CopyButton, useContentPulse, useTypewriter, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 import { sanitizeImageRefs } from "../../../lib/traceSanitize.js";
 
@@ -16,7 +16,9 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
   const bodyRef = useRef(null);
   // 仅在 System Prompt / Messages 真正变化且有内容时，标题栏才脉冲
   const signature = (prompt.system || "") + "||" + JSON.stringify(prompt.messages || []);
-  const hasContent = !!(prompt.system || (prompt.messages && prompt.messages.length));
+  const hasSystem = !!prompt.system;
+  const hasMessages = !!(prompt.messages && prompt.messages.length);
+  const hasContent = hasSystem || hasMessages;
   const alive = useContentPulse(signature, hasContent);
 
   // 给"展示给用户看"的版本做图像引用/路径过滤，避免 trace 暴露本地路径 / @image#N
@@ -25,6 +27,18 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
   // 复制按钮仍然给原文（含引用，便于用户复制粘贴完整 prompt）
   const systemCopy = prompt.system || "";
   const messagesCopy = JSON.stringify(prompt.messages || [], null, 2);
+
+  // 滚动贴底：打字机每帧回调 + 内容/开关变化时都钉到最下面
+  const pinBottom = () => {
+    const m = msgRef.current;
+    if (m) m.scrollTop = m.scrollHeight;
+    const b = bodyRef.current;
+    if (b) b.scrollTop = b.scrollHeight;
+  };
+
+  // 打字机效果：新内容（提示词 / 消息）逐字揭示，纯追加只打新增尾部
+  const typedSystem = useTypewriter(systemDisplay, { onTick: pinBottom });
+  const typedMessages = useTypewriter(messagesJsonDisplay, { onTick: pinBottom });
 
   // Messages 内部 code 块贴底
   useEffect(() => {
@@ -54,19 +68,35 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
       <details className="trace-section" open>
         <summary>提示词</summary>
         <div className="trace-sec-body" ref={bodyRef}>
-          {/* System Prompt */}
-          <div className="trace-sub">
-            System Prompt
-            <CopyButton text={systemCopy} />
-          </div>
-          <pre className="trace-code">{systemDisplay || "（空）"}</pre>
+          {!hasContent ? (
+            <TraceIdle
+              title="提示词流 · 待机中"
+              sub="发起一次对话后，System Prompt 与完整 Messages 会自动空投到这里。"
+            />
+          ) : (
+            <>
+              {/* System Prompt */}
+              <div className="trace-sub">
+                System Prompt
+                <CopyButton text={systemCopy} />
+              </div>
+              <pre className={"trace-code" + (hasSystem ? "" : " trace-empty")}>
+                {typedSystem || "（空）"}
+              </pre>
 
-          {/* 完整 Messages */}
-          <div className="trace-sub">
-            完整 Messages（发送给模型）
-            <CopyButton text={messagesCopy} />
-          </div>
-          <pre className="trace-code" ref={msgRef}>{messagesJsonDisplay}</pre>
+              {/* 完整 Messages */}
+              <div className="trace-sub">
+                完整 Messages（发送给模型）
+                <CopyButton text={messagesCopy} />
+              </div>
+              <pre
+                className={"trace-code" + (hasMessages ? "" : " trace-empty")}
+                ref={msgRef}
+              >
+                {typedMessages || "（空）"}
+              </pre>
+            </>
+          )}
         </div>
       </details>
     </FloatingPanel>

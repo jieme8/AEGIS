@@ -42,6 +42,54 @@ export function useContentPulse(signature, hasContent) {
   return alive;
 }
 
+/**
+ * 打字机钩子：目标文本变化时以「逐字揭示」效果输出。
+ *   - 纯追加（新文本以当前已显示内容为前缀）：仅把新增尾部逐字打出，旧内容不重打；
+ *   - 非追加（结构变化 / 首次 / 清空）：整体从头逐字打出。
+ * 速度按文本长度自适应（整体约 ~2.5s 完成），短追加则更短。
+ * @param {string} fullText 目标完整文本
+ * @param {object} [opts] { onTick?: 每次更新后回调（用于滚动贴底）, speed?: 强制每帧字符数 }
+ * @returns {string} 当前已揭示的文本
+ */
+export function useTypewriter(fullText, opts = {}) {
+  const { onTick, speed } = opts;
+  const [displayed, setDisplayed] = useState("");
+  const shownRef = useRef("");
+  const timer = useRef(null);
+  const onTickRef = useRef(onTick);
+  onTickRef.current = onTick;
+
+  useEffect(() => {
+    if (timer.current) { clearInterval(timer.current); timer.current = null; }
+    const target = fullText || "";
+    const current = shownRef.current;
+    let startIdx;
+    if (target.startsWith(current) && current.length > 0) {
+      startIdx = current.length;            // 纯追加：从新增处继续
+    } else {
+      setDisplayed("");                     // 非追加：从头打
+      startIdx = 0;
+    }
+    shownRef.current = target;
+    if (startIdx >= target.length) {
+      setDisplayed(target);
+      if (onTickRef.current) onTickRef.current();
+      return;
+    }
+    const step = speed || Math.max(2, Math.ceil(target.length / 160));
+    let i = startIdx;
+    timer.current = setInterval(() => {
+      i = Math.min(target.length, i + step);
+      setDisplayed(target.slice(0, i));
+      if (onTickRef.current) onTickRef.current();
+      if (i >= target.length) { clearInterval(timer.current); timer.current = null; }
+    }, 16);
+    return () => { if (timer.current) { clearInterval(timer.current); timer.current = null; } };
+  }, [fullText, speed]);
+
+  return displayed;
+}
+
 
 // ---- 格式化时间戳 ----
 export function fmtTime(ts) {
@@ -77,6 +125,23 @@ export function LoadingDots({ label }) {
     <div className="trace-loading">
       <span className="tdot" /><span className="tdot" /><span className="tdot" />
       <span className="trace-loading-label">{label}</span>
+    </div>
+  );
+}
+
+// ---- 空数据时的动画待机态（各 trace 浮层共用，带动态效果）----
+// variant: 不传=默认(青) | "muted"=未启用(暗青) | "warn"=异常(琥珀)
+export function TraceIdle({ title, sub, variant }) {
+  return (
+    <div className={"trace-idle" + (variant ? " " + variant : "")}>
+      <div className="tidle-orbit" aria-hidden="true">
+        <span className="tidle-ring" />
+        <span className="tidle-ring r2" />
+        <span className="tidle-sweep" />
+        <span className="tidle-core" />
+      </div>
+      <div className="tidle-title">{title}</div>
+      {sub && <div className="tidle-sub">{sub}</div>}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVizEngine } from "./hooks/useVizEngine.js";
 import { useDraggableHud } from "./hooks/useDraggableHud.js";
 import {
@@ -23,10 +23,12 @@ import { MapWindow } from "./components/viz/MapWindow.jsx";
 import { MapErrorBoundary } from "./components/viz/MapErrorBoundary.jsx";
 import { FeatureListWindow } from "./components/viz/FeatureListWindow.jsx";
 import { FlowDiagramWindow } from "./components/viz/FlowDiagramWindow.jsx";
+import { WebViewerWindow } from "./components/viz/WebViewerWindow.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { useOilPrice } from "./lib/oilPrice.js";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
+import { WEBVIEWER_EVENT } from "./lib/webViewer.js";
 import { BOOT_MS, SEQUENCE } from "./lib/bootTimeline.js";
 
 // 入场时序 el → 真实 DOM 选择器（与 bootTimeline.SEQUENCE 一一对应）
@@ -65,6 +67,30 @@ export default function App() {
   const [flowOpen, setFlowOpen] = useState(false);
   // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 网页查看器：每个网页单独一个独立浮层（单窗单页）；再来一个网页再弹一个新窗口。
+  // 由 jarvis:open-url 事件驱动；手动（任务栏「网页」）也会弹出新窗口。
+  const [viewers, setViewers] = useState([]); // [{ id, url, x, y, open }]
+  const viewerSeq = useRef(0);
+  const spawnViewer = (url) => {
+    setViewers((prev) => {
+      const last = prev.length ? prev[prev.length - 1] : null;
+      const base = last ? { x: last.x + 35, y: last.y + 20 } : { x: 410, y: 120 };
+      return [
+        ...prev,
+        {
+          id: "wv-" + (++viewerSeq.current),
+          url: url || "",
+          x: base.x,
+          y: base.y,
+          open: true,
+        },
+      ];
+    });
+  };
+  const closeViewer = (id) => {
+    setViewers((prev) => prev.map((v) => (v.id === id ? { ...v, open: false } : v)));
+    setTimeout(() => setViewers((prev) => prev.filter((v) => v.id !== id)), 360);
+  };
 
   useEffect(() => {
     // 注入各组件入场时序变量（--delay/--dur/--ease），由 CSS 消费
@@ -111,6 +137,31 @@ export default function App() {
     document.body.classList.add("booted");
     setBooted(true);
   };
+
+  // 监听网页查看器事件：AI 回复链接 / 自动提取的 URL → 每个网址弹出一个独立窗口，
+  // 多个网址时按 0.5s 间隔依次打开（一个个弹出，而非同时铺开）
+  useEffect(() => {
+    const onOpen = (e) => {
+      const urls = (e.detail && e.detail.urls) || [];
+      if (!urls.length) return;
+      urls.forEach((u, i) => {
+        setTimeout(() => {
+          setViewers((prev) => {
+            const out = [...prev].filter((v) => v.open);
+            if (out.some((v) => v.url === u)) return prev;
+            const last = out.length ? out[out.length - 1] : null;
+            const base = last ? { x: last.x + 35, y: last.y + 20 } : { x: 410, y: 120 };
+            return [...prev, {
+              id: "wv-" + (++viewerSeq.current),
+              url: u, x: base.x, y: base.y, open: true,
+            }];
+          });
+        }, i * 500);
+      });
+    };
+    window.addEventListener(WEBVIEWER_EVENT, onOpen);
+    return () => window.removeEventListener(WEBVIEWER_EVENT, onOpen);
+  }, []);
 
   return (
     <>
@@ -170,6 +221,18 @@ export default function App() {
       {/* 独立功能流程图窗口：SVG 渲染各管线数据流，节点可复制源码锚点 */}
       <FlowDiagramWindow open={flowOpen} onClose={() => setFlowOpen(false)} />
 
+      {/* 独立网页查看器：每个网页一个独立浮层（单窗单页，再来一个再弹一个） */}
+      {viewers.map((v) => (
+        <WebViewerWindow
+          key={v.id}
+          devId={"web-viewer-" + v.id}
+          url={v.url}
+          pos={{ x: v.x, y: v.y }}
+          open={v.open}
+          onClose={() => closeViewer(v.id)}
+        />
+      ))}
+
       {/* 设置窗口：语言模型 / 生图模型 / 生图比例 三个切换器迁入此处 */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
@@ -199,6 +262,11 @@ export default function App() {
         featuresOpen={featuresOpen}
         onToggleFlow={() => setFlowOpen((v) => !v)}
         flowOpen={flowOpen}
+        onToggleWeb={() => {
+          const u = window.prompt("打开网址（https://…）");
+          if (u && /^https?:\/\//i.test(u.trim())) spawnViewer(u.trim());
+        }}
+        webOpen={viewers.some((v) => v.open)}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsOpen={settingsOpen}
       />

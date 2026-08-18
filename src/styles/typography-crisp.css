@@ -220,3 +220,38 @@ body {
  *    · 缩放比例：text-size-adjust:100% 已禁止浏览器对正文“智能”缩放，
  *      保证 125%/150% 系统缩放下字号仍由我们的 clamp 决定、不糊。
  * ------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------
+ * 9) Windows 专属：中文回退微软雅黑，英文保持 JetBrains Mono 不变
+ *    ----------------------------------------------------------------
+ *    触发：仅当 <html data-os="win">（由 src/main.jsx 依据 userAgent
+ *          注入，非 Windows 环境不打标记 → 本段整体不生效，零影响）。
+ *    原理：CSS 字体栈按「字形」逐字匹配——
+ *      · 英文字母/数字：先被栈首 "JetBrains Mono" 命中 → 英文完全不变；
+ *      · 中文字形：JetBrains Mono 不含 CJK 字形 → 顺延到 "Microsoft YaHei"
+ *        （微软雅黑）命中 → 中文走雅黑。两者互不干扰。
+ *    因此「英文不变、中文换雅黑」由字体栈顺序天然保证，无需按语言拆 DOM。
+ * ------------------------------------------------------------- */
+:root[data-os="win"] {
+  /* 主等宽栈：英文仍走 JetBrains Mono，中文回退微软雅黑 */
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code",
+          "Consolas", "Roboto Mono", Menlo, "Microsoft YaHei", "微软雅黑", monospace;
+  /* UI/无衬线栈：英文仍走 system-ui（与改动前一致），中文回退微软雅黑 */
+  --ui: system-ui, "Segoe UI", "Microsoft YaHei", "微软雅黑", sans-serif;
+  /* 浮层代码块栈：英文 JetBrains Mono，中文微软雅黑 */
+  --font-mono: "JetBrains Mono", "Microsoft YaHei", "微软雅黑", monospace;
+}
+
+/* 个别硬编码等宽栈（未走变量）同样在 Windows 下补齐中文回退 */
+[data-os="win"] .movie-search .ms-link.ms-magnet,
+[data-os="win"] .movie-search .ms-link.ms-pan {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+               "Microsoft YaHei", "微软雅黑", monospace;
+}
+[data-os="win"] .fl-src {
+  font-family: ui-monospace, SFMono-Regular, Menlo, "Microsoft YaHei", "微软雅黑", monospace;
+}
+[data-os="win"] .flow-node-anchor {
+  font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas,
+               "Microsoft YaHei", "微软雅黑", monospace;
+}

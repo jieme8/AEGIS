@@ -226,6 +226,7 @@ async function handleCall(req, res) {
     });
   }
   try {
+    if (server.name === "memory") log(`⇢ ${name} @ memory`);
     const result = await server.client.callTool({ name, arguments: args });
     sendJSON(res, 200, {
       content: contentToString(result.content),

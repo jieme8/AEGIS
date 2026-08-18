@@ -269,17 +269,15 @@ export function ImageWindow({ open, onClose }) {
       <div className="iw-body" ref={bodyRef}>
         {items.length === 0 && (
           <div className="iw-empty">
-            <svg className="iw-empty-icon" viewBox="0 0 64 64" aria-hidden="true">
-              <rect x="8" y="14" width="48" height="36" rx="5" />
-              <circle cx="22" cy="28" r="5" />
-              <path d="M12 46 L26 32 L36 42 L44 34 L52 46" />
-            </svg>
-            <div className="iw-empty-title">暂无配图</div>
-            <div className="iw-empty-hint">
-              当助手判断回答「值得生图」时，<br />
-              AI 生成的配图会自动出现在这里，<br />
-              不再挤进聊天框。
+            <div className="iw-empty-orbit" aria-hidden="true">
+              <span className="iw-ring" />
+              <span className="iw-ring r2" />
+              <span className="iw-ring r3" />
+              <span className="iw-sweep" />
+              <span className="iw-core" />
             </div>
+            <div className="iw-empty-title">配图缓冲区 · 待机中</div>
+            <div className="iw-empty-status">// STANDBY — 等待值得生图的内容信号</div>
           </div>
         )}
 

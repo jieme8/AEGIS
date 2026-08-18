@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MCPClient } from "../../lib/mcpClient.js";
 import { isAutoMemoryEnabled, setAutoMemoryEnabled } from "../../lib/autoMemory.js";
+import { isRecallEnabled, setRecallEnabled } from "../../lib/recall.js";
 
 /*
  * MCP 服务器列表浮层（独立浮层，Portal 挂到 document.body，不受任何父容器限制）
@@ -124,6 +125,8 @@ function MemoryModal({ open, onClose, client }) {
   const [saving, setSaving] = useState(false);
   // 自动记忆捕获：开关 + 最近一次捕获结果（供状态行展示）
   const [autoOn, setAutoOn] = useState(isAutoMemoryEnabled());
+  // 主动召回：开关（独立于自动捕获，控制回答前是否检索并注入长期记忆）
+  const [recallOn, setRecallOn] = useState(isRecallEnabled());
   const [lastCap, setLastCap] = useState(null);
 
   // 监听捕获完成事件：刷新列表 + 更新「上次自动保存」状态行
@@ -147,6 +150,12 @@ function MemoryModal({ open, onClose, client }) {
     const next = !autoOn;
     setAutoOn(next);
     setAutoMemoryEnabled(next);
+  };
+
+  const toggleRecall = () => {
+    const next = !recallOn;
+    setRecallOn(next);
+    setRecallEnabled(next);
   };
 
   const load = async () => {
@@ -274,6 +283,15 @@ function MemoryModal({ open, onClose, client }) {
                 data-dev-id="mcp-memory-auto-toggle"
               />
               <span>自动捕获对话中的记忆（每轮对话后提炼用户事实写入）</span>
+            </label>
+            <label className="mcp-mem-auto-row">
+              <input
+                type="checkbox"
+                checked={recallOn}
+                onChange={toggleRecall}
+                data-dev-id="mcp-memory-recall-toggle"
+              />
+              <span>主动召回（回答前检索长期记忆并注入上下文）</span>
             </label>
             <div className="mcp-mem-lastcap">
               {lastCap

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CopyButton, MCP_STATUS, useContentPulse } from "./shared.jsx";
+import { CopyButton, MCP_STATUS, useContentPulse, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 import { sanitizeImageRefs, sanitizeField } from "../../../lib/traceSanitize.js";
 
@@ -65,13 +65,22 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
         </summary>
         <div className="trace-sec-body">
           {!mcp || !mcp.enabled ? (
-            <div className="trace-empty">（MCP 工具未启用）</div>
+            <TraceIdle
+              variant="muted"
+              title="MCP 工具未启用"
+              sub="在终端运行 npm run mcp-relay 启用后，工具调用会显示在这里。"
+            />
           ) : mcp.status === "unavailable" ? (
-            <div className="trace-empty warn">
-              MCP 当前不可用，已自动降级为无工具对话。请在终端确认 `npm run mcp-relay` 已启动。
-            </div>
+            <TraceIdle
+              variant="warn"
+              title="MCP 当前不可用"
+              sub="已自动降级为无工具对话。请确认 npm run mcp-relay 已启动。"
+            />
           ) : invocations.length === 0 ? (
-            <div className="trace-empty">（本次对话未触发任何工具调用）</div>
+            <TraceIdle
+              title="工具调用 · 待机"
+              sub="本次对话尚未触发任何工具调用。"
+            />
           ) : (
             invocations.map((inv, i) => {
               // callId 在每个 LLM 回合会重置（call_0/call_1…），跨回合会重复，

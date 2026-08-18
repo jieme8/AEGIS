@@ -8,6 +8,7 @@ import { runAgentLoop } from "../lib/agentLoop.js";
 import { providerManager } from "../lib/providerManager.js";
 import { runImagePipeline } from "../lib/imagePipeline.js";
 import { runAutoMemory } from "../lib/autoMemory.js";
+import { recallMemories } from "../lib/recall.js";
 // 渲染前过滤：脱敏 @image#N:"..." / <image_local_path>...</image_local_path> / Windows 路径等本地图片引用
 import { sanitizeImageRefs } from "../lib/traceSanitize.js";
 import {
@@ -22,6 +23,8 @@ import {
 import { populateDiscovery } from "../lib/movieDiscovery.js";
 // 内容生成后校验引擎：溯源 / 可信度分级，落实「事实准确性为最高优先级」
 import { verifyAnswer, extractLiveSources, LEVEL_META } from "../lib/answerVerifier.js";
+// 网页查看器：AI 回复链接在独立浮层打开（自动提取 + 可达性探测）
+import { dispatchOpenUrls, extractUrls, probeUrl } from "../lib/webViewer.js";
 
 // 事实准确性优先 · 系统级约束（最高优先级，追加进 system 提示词，约束每一次回复）
 const FACTUALITY_DIRECTIVES =
@@ -39,8 +42,8 @@ const FACTUALITY_DIRECTIVES =
   "涉及最新动态时，应主动声明局限并建议用户查阅权威来源核实。\n" +
   "6. 所有表述须有据可依；无法溯源的断言应降级为「可能 / 待核实」或明确标注不确定性。";
 // 对话位置自动地图标注 → 独立 MapWindow 浮窗（事件驱动）
-import { extractLocations, KNOWN_CITY } from "../lib/locationExtractor.js";
-import { parseGeoMarker, parseRoute, parseTextSearch, parseSearchDetail } from "../lib/mapParse.js";
+import { extractLocations, extractLocationsStrict, KNOWN_CITY } from "../lib/locationExtractor.js";
+import { parseGeoMarker, parseRoute, parseTextSearch, parseSearchDetail, validateAgainstCity, guessContextCity } from "../lib/mapParse.js";
 
 /**
  * 主对话窗口控制器（集成于频谱可视化器）—— 页面核心交互区。
@@ -112,16 +115,18 @@ function renderInlineLinks(bubble, text) {
       a.href = m[2];
       a.textContent = m[1];
       a.className = "chat-md-link";
-      a.target = "_blank";
       a.rel = "noopener noreferrer";
+      const url = m[2];
+      a.addEventListener("click", (e) => { e.preventDefault(); dispatchOpenUrls([url]); });
       textSpan.appendChild(a);
     } else if (m[0] && m[0].startsWith("http")) {
       const a = document.createElement("a");
       a.href = m[0];
       a.textContent = m[0];
       a.className = "chat-bare-link";
-      a.target = "_blank";
       a.rel = "noopener noreferrer";
+      const url = m[0];
+      a.addEventListener("click", (e) => { e.preventDefault(); dispatchOpenUrls([url]); });
       textSpan.appendChild(a);
     } else {
       textSpan.appendChild(document.createTextNode(m[0]));
@@ -538,6 +543,9 @@ export function useChatController() {
 
     // 来源①：对消息文本抽取位置 → maps_geo → 每张地图一个地点（标题用真实地名）
     // opts.ctx 可选：对话历史数组（用于 POI 上下文消歧，例如 ctx 含"上海"时"东方明珠"会升级成"上海东方明珠"）
+    // opts.mode 可选："normal"（默认）/ "strict"。strict 端挡掉 AI 描述型提及，避免
+    //   "陆家嘴三件套" 这种介绍型文本被误推 3 张地图卡片、且 text_search 在无 city 参数下
+    //   跨省匹配命中天津/邵阳同名点（marker 飘到外省 → setFitView 把视口扯到全国）。
     async function maybeShowMap(text, role, opts = {}) {
       try {
         // 拼最近几轮历史做 ctx，避免单条文本"东方明珠"无城市前缀 → maps_geo 命中邵阳同名点。
@@ -545,8 +553,16 @@ export function useChatController() {
         const recentCtx = (state.history || [])
           .slice(-3)
           .map((h) => String(h.text || "").slice(0, 400));
-        const cands = extractLocations(text, { ctx: recentCtx });
+        const mode = opts.mode || "normal";
+        const extractor = mode === "strict" ? extractLocationsStrict : extractLocations;
+        const cands = extractor(text, { ctx: recentCtx });
         if (!cands.length) return;
+
+        // 上下文关联：text + 历史里的 KNOWN_CITY 哪个出现最多 → 兜底 cityArg（防止
+        // query 不以 CITY 开头如"陆家嘴金融中心区" 时 text_search 跨省误匹配）。
+        const cityCorpus = text + " " + recentCtx.join(" ");
+        const contextCity = guessContextCity(cityCorpus);
+
         for (const c of cands) {
           try {
             // 两段式精确查询：
@@ -555,11 +571,12 @@ export function useChatController() {
             // 失败再回退到 maps_geo（处理非 POI 类地址，如"杭州市西湖区文一路 100 号"等纯地址）。
             let mk = null;
             let detailQuery = c.query;
-            // 从 query 里识别 KNOWN_CITY 前缀作为 city 参数；无前缀则让 text_search 自由匹配。
+            // 从 query 里识别 KNOWN_CITY 前缀作为 city 参数；无前缀则尝试 contextCity 兜底。
             let cityArg = null;
             for (const city of KNOWN_CITY) {
               if (c.query.startsWith(city)) { cityArg = city; break; }
             }
+            if (!cityArg && contextCity) cityArg = contextCity;
             const tsRes = await mcpClient.callTool("maps_text_search", {
               keywords: c.query,
               ...(cityArg ? { city: cityArg } : {}),
@@ -582,6 +599,23 @@ export function useChatController() {
               const r = await mcpClient.callTool("maps_geo", { address: c.query });
               if (!r.isError) {
                 mk = parseGeoMarker(r.content, c.text);
+              }
+            }
+            // 安全网：距离校验。如果 text 或 ctx 里包含 KNOWN_CITY 而返回坐标离该
+            // 城市中心 > 阈值（大城市 80km / 中城市 60km），视为跨省同名误匹配，丢弃。
+            // 例：text="陆家嘴三件套" + ctx="上海..." → 期望城市=上海；text_search 命中
+            //      天津"陆家嘴金融中心"（117.16,39.14）→ 距上海 1091km → 丢弃。
+            const expectedCity = cityArg || contextCity;
+            if (mk && expectedCity) {
+              const v = validateAgainstCity(mk, expectedCity);
+              if (!v.ok) {
+                console.warn(
+                  "[map] 跨省误匹配已丢弃：",
+                  c.query, "→", mk.label, "(" + mk.lng + "," + mk.lat + ")",
+                  "期望城市=" + expectedCity,
+                  v.reason
+                );
+                mk = null;
               }
             }
             if (mk) {
@@ -877,14 +911,20 @@ export function useChatController() {
     // ---------- 构造请求消息（system + 最近 12 轮历史） ----------
     // 注意：chat-panel 并非频谱数据智能体，故 system 提示词不含任何实时音频/
     // 频谱描述，仅保留通用 AI 助手身份与语气约束。
-    function buildMessages() {
-      const systemMsg = {
-        role: "system",
-        content:
-          "你是集成在一个赛博朋克风格界面中的 AI 助手「J.A.R.V.I.S.」。" +
-          "请用简体中文回答，语气带科技感，简洁清晰、切中要点。" +
-          FACTUALITY_DIRECTIVES,
-      };
+    async function buildMessages(userText) {
+      const base =
+        "你是集成在一个赛博朋克风格界面中的 AI 助手「J.A.R.V.I.S.」。" +
+        "请用简体中文回答，语气带科技感，简洁清晰、切中要点。" +
+        FACTUALITY_DIRECTIVES;
+      let content = base;
+      // 主动召回：把和用户当前问题相关的长期记忆注入 system，使助手自带上下文
+      try {
+        const block = await recallMemories(userText || "");
+        if (block) content = base + "\n\n" + block;
+      } catch (e) {
+        /* 召回失败不影响主流程，退化为无记忆版本 */
+      }
+      const systemMsg = { role: "system", content };
       const historyMsgs = state.history.slice(-12).map((m) => ({
         role: m.role === "user" ? "user" : "assistant",
         content: m.text,
@@ -1023,7 +1063,7 @@ export function useChatController() {
       const typing = showTyping();            // 首个 token 到达前显示思考点
 
       // ---- 构造请求上下文 + 初始 trace（对话发起瞬间） ----
-      const built = buildMessages();
+      const built = await buildMessages(raw);
       const activeProfile = providerManager.getActive();
       const traceInit = {
         status: "sending",
@@ -1162,11 +1202,24 @@ export function useChatController() {
           sentAt: traceInit.sentAt,
         });
         if (bubble) bubble.finalize(result.finalContent);
+        // 自动打开网页：AI 终态含 URL 时，先探测可达性，仅可达的才自动开独立浮层（避免对死链弹窗）
+        const _urls = extractUrls(result.finalContent);
+        if (_urls.length) {
+          Promise.all(_urls.map((u) => probeUrl(u).then((ok) => (ok ? u : null))))
+            .then((res) => {
+              const reachable = res.filter(Boolean);
+              if (reachable.length) dispatchOpenUrls(reachable, { auto: true });
+            })
+            .catch(() => {});
+        }
         // 气泡溯源脚注：把可信度 / 来源 / 时效边界直接挂到回复下方，输出可溯源、可验证
         const fbTarget = (bubble && bubble.el) ? bubble.el : (messagesEl && messagesEl.lastElementChild);
         attachProvenanceFooter(fbTarget, vReport);
         // 来源①：AI 终态文本含位置 → 自动地图标注
-        maybeShowMap(result.finalContent, "ai").catch(() => {});
+        // mode: 'strict' 过滤掉 AI 描述型提及（如"陆家嘴三件套"、"东方明珠广播电视塔"作为
+        // 知识点描述，不是用户问"地图上的地点"）。这些 POI 名称会让 maps_text_search 在无
+        // city 约束下跨省匹配命中天津/邵阳同名点，setFitView 把地图视口扯到全国。
+        maybeShowMap(result.finalContent, "ai", { mode: "strict" }).catch(() => {});
         // 出行/规划意图识别：AI 终态文本若问"请补充定位参数/偏好/半径" → 在回复下方挂一个临时 inline 行动按钮
         // 不写死常显入口，按对话上下文自适应出现/消失。
         if (TRAVEL_INTENT_RE.test(result.finalContent)) setTravelAction();
@@ -1228,8 +1281,8 @@ export function useChatController() {
         // 兜底 / 失败路径：明确脚注「无真实依据 / 未溯源」，避免用户误信
         const fbWrap = bubble ? bubble.el : messagesEl.lastElementChild;
         attachProvenanceFooter(fbWrap, null, { fallback: replyKind === "fallback", error: replyKind === "error" });
-        // 来源①：AI 错误/兜底文本含位置 → 自动地图标注
-        maybeShowMap(finalText, "ai").catch(() => {});
+        // 来源①：AI 错误/兜底文本含位置 → 自动地图标注（同样 strict，挡描述型噪声）
+        maybeShowMap(finalText, "ai", { mode: "strict" }).catch(() => {});
         // 出行/规划意图识别（兜底路径同样触发，避免 error 路径把用户卡死）
         if (TRAVEL_INTENT_RE.test(finalText)) setTravelAction();
         runImagePipeline(finalText);   // 兜底/错误路径同样配图（旁路，不影响文本）

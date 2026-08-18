@@ -12,10 +12,11 @@ const TASKS = [
   { id: "task-dev",     label: "调试", icon: "⚙", onClick: () => window.toggleDevMode?.(), selfActive: true },
   { id: "task-features", label: "清单", icon: "≡", selfActive: false },
   { id: "task-flow",     label: "流程", icon: "⇄", selfActive: false },
+  { id: "task-web",      label: "网页", icon: "🌐", selfActive: false },
   { id: "task-settings", label: "设置", icon: "◫", selfActive: true },
 ];
 
-export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeatures, featuresOpen, onToggleFlow, flowOpen, onOpenSettings, settingsOpen }) {
+export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeatures, featuresOpen, onToggleFlow, flowOpen, onToggleWeb, webOpen, onOpenSettings, settingsOpen }) {
   // 调试按钮反映真实 dev-mode 状态（其他按钮沿用选中态）
   const [devOn, setDevOn] = useState(false);
   useEffect(() => {
@@ -39,7 +40,9 @@ export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeat
                 ? featuresOpen
                 : t.id === "task-flow"
                   ? flowOpen
-                  : (t.selfActive ? devOn : active === t.id);
+                  : t.id === "task-web"
+                    ? webOpen
+                    : (t.selfActive ? devOn : active === t.id);
           return (
             <button
               key={t.id}
@@ -50,7 +53,8 @@ export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeat
                 if (t.id === "task-settings") { onOpenSettings?.(); return; }
                 if (t.id === "task-map") { onToggleMap?.(); return; }
                 if (t.id === "task-features") { onToggleFeatures?.(); return; }
-                if (t.id === "task-flow") { onToggleFlow?.(); return; }
+                if (  t.id === "task-flow") { onToggleFlow?.(); return; }
+                if (t.id === "task-web") { onToggleWeb?.(); return; }
                 t.onClick?.();
                 if (!t.selfActive) onActivate?.(active === t.id ? null : t.id);
               }}

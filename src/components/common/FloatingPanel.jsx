@@ -19,9 +19,11 @@ export function FloatingPanel({
   title,
   defaultPos = { x: 480, y: 16 },
   width = 320,
+  height,
   open,
   onClose,
   headClass = "",
+  headExtra,
   index = 0,
   total = 1,
   children,
@@ -52,8 +54,8 @@ export function FloatingPanel({
   const phase = open ? "enter" : "exit";
   const animDelay = (open ? index : total - 1 - index) * (open ? ENTER_STAGGER : EXIT_STAGGER);
 
-  const onHeadPointerDown = (e) => {
-    if (e.target.closest(".float-close")) return;   // 关闭按钮不触发拖拽
+    const onHeadPointerDown = (e) => {
+    if (e.target.closest("button")) return;   // 标题栏上的按钮（关闭 / 自定义）不触发拖拽
     const box = ref.current;
     if (!box) return;
     const startX = e.clientX, startY = e.clientY;
@@ -88,6 +90,7 @@ export function FloatingPanel({
         left: defaultPos.x + "px",
         top: defaultPos.y + "px",
         width: width + "px",
+        height: height ? height + "px" : undefined,
         // 错落延迟：入场按 index、收起按反向 index；配合 CSS 的 backwards/forwards 填充
         animationDelay: (animDelay / 1000).toFixed(2) + "s",
       }}
@@ -95,6 +98,7 @@ export function FloatingPanel({
     >
       <div className={`float-head${headClass ? " " + headClass : ""}`} onPointerDown={onHeadPointerDown}>
         <span className="float-title">{title}</span>
+        {headExtra}
         <button className="float-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
       </div>
       <div className="float-body">{children}</div>
