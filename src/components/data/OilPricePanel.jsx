@@ -62,14 +62,96 @@ function daysUntil(date) {
   return Math.round((d - today) / 86400000);
 }
 
+/* =========================================================
+   成品油调价窗口（国家发改委：每 ~10 个工作日调一次，24:00 生效）。
+   这里锚定官方公布的年度窗口表，避免用“每 10 天”瞎算导致节假日错位。
+   新增年份时把对应数组补上即可；找不到当年表时退化为“每 10 天”估算。
+   ========================================================= */
+const OIL_ADJUST_SCHEDULE = {
+  2026: [
+    "01-06", "01-20", "02-03", "02-24", "03-09", "03-23", "04-07", "04-21",
+    "05-08", "05-21", "06-04", "06-18", "07-03", "07-17", "07-31", "08-14",
+    "08-28", "09-11", "09-24", "10-15", "10-29", "11-12", "11-26", "12-10",
+    "12-24",
+  ],
+};
+
+// 把 "MM-DD" 转成当年调价日当天的 Date（0 点）；24:00 仅用于倒计时文案
+function mmddToWindowDate(yyyy, mmdd) {
+  const [m, d] = mmdd.split("-").map(Number);
+  return new Date(yyyy, m - 1, d, 0, 0, 0, 0);
+}
+
+// 给定今天，返回 { prev, next } 两个调价日 Date：
+//   next = 第一个 ≥ 今天的窗口（含今日，今日即“今日调价”）；
+//   prev = 最后一个 < 今天的窗口（已生效）。
+// 当年表用尽时 next 为 null（界面显示“待官方公布”）。
+function computeAdjustWindow(today) {
+  const yyyy = today.getFullYear();
+  const table = OIL_ADJUST_SCHEDULE[yyyy] || null;
+  const base = new Date(yyyy, today.getMonth(), today.getDate());
+
+  if (table) {
+    let prev = null;
+    let next = null;
+    for (const mmdd of table) {
+      const w = mmddToWindowDate(yyyy, mmdd);
+      if (w < base) prev = w; // 已生效
+      else {
+        next = w; // 首个 ≥ 今天的窗口
+        break;
+      }
+    }
+    return { prev, next };
+  }
+
+  // 退化策略：无官方表时按约 10 天循环估算（仅兜底，不保证节假日准确）
+  const approx = (offset) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + offset);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+  const dayIdx = Math.floor((base - new Date(yyyy, 0, 1)) / 86400000) % 10;
+  return { prev: approx(-dayIdx), next: approx(10 - dayIdx) };
+}
+
+// 实时时钟：每 intervalMs 刷新一次，驱动“更新于”与倒计时随系统时间变化
+function useNow(intervalMs = 60000) {
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function fmtMMDD(date) {
+  if (!date) return "—";
+  return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`;
+}
+function fmtHM(date) {
+  return `${String(date.getHours()).padStart(2, "0")}:${String(
+    date.getMinutes()
+  ).padStart(2, "0")}`;
+}
+
 export function OilPricePanel({
   data,
-  nextAdjust,
+  nextAdjust, // 可选：外部强制指定下次窗口；缺省时按年度表从今天动态推算
   forecast, // { direction: "up" | "down" | "hold", text }
   basis,
   booted = false, // 启动序列完成后再触发数字计数入场
 }) {
   const rootRef = useRef(null);
+  const now = useNow(60000); // 每分钟刷新，保证“更新于”与倒计时跟随系统时间
+
+  // 动态调价窗口：优先用外部 nextAdjust，否则按年度表推算
+  const adjustWindow = nextAdjust
+    ? { prev: null, next: nextAdjust }
+    : computeAdjustWindow(now);
 
   // 仅在「显示组件ID」(dev-mode) 时允许拖动油价卡。拖动作用于外层 .oil-dock
   // （fixed 容器，避免受 dock 自身 transform 影响）；退出 dev-mode 时移除监听（位置保留）。
@@ -136,11 +218,13 @@ export function OilPricePanel({
   const up = change >= 0;
   const anim = useCountUp(price, 900, booted);
 
-  const dCount = nextAdjust ? daysUntil(nextAdjust) : null;
+  const nextDate = adjustWindow.next;
+  const prevDate = adjustWindow.prev;
+  const dCount = nextDate ? daysUntil(nextDate) : null;
   const dDay =
-    nextAdjust &&
-    `${String(nextAdjust.getMonth() + 1).padStart(2, "0")}-${String(
-      nextAdjust.getDate()
+    nextDate &&
+    `${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(
+      nextDate.getDate()
     ).padStart(2, "0")} 24:00`;
 
   const fCls =
@@ -176,17 +260,30 @@ export function OilPricePanel({
           <span className="oil-k">调价</span>
           <span className="oil-v">
             {dCount === null
-              ? "—"
+              ? "待公布"
               : dCount <= 0
               ? "今日调价"
               : `剩 ${dCount} 天`}
-            {dDay && <span className="oil-dim"> · {dDay}</span>}
+            {dDay ? (
+              <span className="oil-dim"> · {dDay}</span>
+            ) : nextDate ? null : (
+              <span className="oil-dim"> · 待官方公布</span>
+            )}
+            {prevDate && (
+              <span className="oil-dim">（上次 {fmtMMDD(prevDate)}）</span>
+            )}
           </span>
         </div>
         <div className="oil-row">
           <span className="oil-k">预估</span>
           <span className={`oil-v ${fCls}`}>
             {fArrow} {forecast?.text ?? "—"}
+          </span>
+        </div>
+        <div className="oil-row">
+          <span className="oil-k">更新</span>
+          <span className="oil-v oil-dim">
+            {fmtMMDD(now)} {fmtHM(now)}
           </span>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { STATUS_META, fmtTime } from "./shared.jsx";
+import { STATUS_META, fmtTime, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -8,6 +8,9 @@ import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
   const meta = (trace && STATUS_META[trace.status]) || STATUS_META.sending;
   const t = trace || {};
+  // 仅在请求状态相关字段变化且有数据时，标题栏才脉冲
+  const signature = `${t.status}|${t.model}|${t.mode}|${t.sentAt}|${t.key ? t.key.label : ""}`;
+  const alive = useContentPulse(signature, true);
 
   return (
     <FloatingPanel
@@ -17,6 +20,7 @@ export function TraceRequestStatus({ trace, open, onClose, index = 0 }) {
       width={300}
       open={open}
       onClose={onClose}
+      headClass={alive ? "alive" : ""}
       index={index}
     >
       <details className="trace-section" open>

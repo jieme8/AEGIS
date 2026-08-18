@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { CopyButton } from "./shared.jsx";
+import { CopyButton, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -13,6 +13,10 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
   const ctx = t.context || {};
   const msgRef = useRef(null);
   const bodyRef = useRef(null);
+  // 仅在 System Prompt / Messages 真正变化且有内容时，标题栏才脉冲
+  const signature = (prompt.system || "") + "||" + JSON.stringify(prompt.messages || []);
+  const hasContent = !!(prompt.system || (prompt.messages && prompt.messages.length));
+  const alive = useContentPulse(signature, hasContent);
 
   // Messages 内部 code 块贴底
   useEffect(() => {
@@ -36,6 +40,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
       width={320}
       open={open}
       onClose={onClose}
+      headClass={alive ? "alive" : ""}
       index={index}
     >
       <details className="trace-section" open>

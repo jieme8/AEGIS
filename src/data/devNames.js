@@ -3,7 +3,7 @@ export const DEV_NAMES = {
   "fx-scanbar": "移动扫描光带",
   "fx-spectrum": "频谱可视化画布",
   "fx-title": "顶部故障标题",
-  "hud-bl": "左下 HUD · 帧率/能量/峰值/频率/增益/分辨率",
+  "hud-bl": "左下 HUD · 帧率/能量/峰值/增益/分辨率",
   "task-bar": "底部任务栏 · 功能/组件入口",
   "fx-hacker-stream": "左侧黑客数据流",
   "chat-panel": "主对话窗口",

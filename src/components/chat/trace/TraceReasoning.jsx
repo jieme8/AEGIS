@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { LoadingDots } from "./shared.jsx";
+import { LoadingDots, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -12,6 +12,10 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
   const streaming = t.status === "streaming" || t.status === "sending";
   const hasReasoning = !!(reply.reasoning && reply.reasoning.length);
   const codeRef = useRef(null);
+  // 仅在「思考内容」真正变化且有内容时，标题栏才脉冲（空闲不闪）
+  const signature = reply.reasoning || "";
+  const hasContent = streaming || hasReasoning;
+  const alive = useContentPulse(signature, hasContent);
 
   // 思考过程流式增长时，滚动条始终贴底，保证新内容可见
   useEffect(() => {
@@ -27,6 +31,7 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
       width={320}
       open={open}
       onClose={onClose}
+      headClass={alive ? "alive" : ""}
       index={index}
     >
       <details className="trace-section" open>

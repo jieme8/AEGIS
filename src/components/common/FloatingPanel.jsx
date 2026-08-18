@@ -21,6 +21,7 @@ export function FloatingPanel({
   width = 320,
   open,
   onClose,
+  headClass = "",
   index = 0,
   total = 1,
   children,
@@ -92,7 +93,7 @@ export function FloatingPanel({
       }}
       data-dev-id={devId}
     >
-      <div className="float-head" onPointerDown={onHeadPointerDown}>
+      <div className={`float-head${headClass ? " " + headClass : ""}`} onPointerDown={onHeadPointerDown}>
         <span className="float-title">{title}</span>
         <button className="float-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
       </div>

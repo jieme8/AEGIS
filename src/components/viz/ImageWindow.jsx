@@ -38,35 +38,42 @@ function openLightbox(url, prompt, meta) {
     ov = document.createElement("div");
     ov.id = "imgLightbox";
     ov.className = "img-lightbox";
+    ov.setAttribute("data-dev-id", "img-lightbox");
     document.body.appendChild(ov);
     ov.addEventListener("click", () => ov.classList.remove("open"));
   }
   ov.innerHTML = "";
   const fig = document.createElement("div");
   fig.className = "img-lightbox-fig";
+  fig.setAttribute("data-dev-id", "lb-fig");
   const img = document.createElement("img");
   img.src = url;
   img.alt = prompt || "";
+  img.setAttribute("data-dev-id", "lb-img");
   const cap = document.createElement("div");
   cap.className = "img-lightbox-cap";
+  cap.setAttribute("data-dev-id", "lb-cap");
   const metaLine = [meta && meta.model, meta && meta.revised_prompt].filter(Boolean).join(" · ");
   const overlayText = meta && meta.overlayText;
 
   const title = document.createElement("div");
   title.textContent = prompt || "AI 生成配图";
+  title.setAttribute("data-dev-id", "lb-title");
   cap.appendChild(title);
 
   if (metaLine) {
     const metaEl = document.createElement("div");
     metaEl.className = "lb-meta";
     metaEl.textContent = metaLine;
+    metaEl.setAttribute("data-dev-id", "lb-meta");
     cap.appendChild(metaEl);
   }
   if (overlayText) {
-    const ov = document.createElement("pre");
-    ov.className = "lb-overlay";
-    ov.textContent = overlayText;
-    cap.appendChild(ov);
+    const ovPre = document.createElement("pre");
+    ovPre.className = "lb-overlay";
+    ovPre.textContent = overlayText;
+    ovPre.setAttribute("data-dev-id", "lb-overlay");
+    cap.appendChild(ovPre);
   }
 
   fig.appendChild(img);

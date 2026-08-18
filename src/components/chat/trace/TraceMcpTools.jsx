@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CopyButton, MCP_STATUS } from "./shared.jsx";
+import { CopyButton, MCP_STATUS, useContentPulse } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 
 /**
@@ -11,6 +11,17 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
   const mcp = t.mcp || null;
   const invocations = (mcp && mcp.invocations) || [];
   const mcpMeta = (mcp && MCP_STATUS[mcp.status]) || MCP_STATUS.pending;
+  // 仅在工具调用状态/结果真正变化且有活动时，标题栏才脉冲
+  const sig =
+    `${mcp ? mcp.status : "none"}|${invocations.length}|` +
+    invocations
+      .map((i) =>
+        `${i.callId}:${i.isError ? 1 : 0}:` +
+        ((typeof i.result === "string" ? i.result : JSON.stringify(i.result || "")).slice(0, 40)))
+      .join("|");
+  const mcpActive = !!(mcp && mcp.enabled && mcp.status && mcp.status !== "pending");
+  const hasContent = invocations.length > 0 || mcpActive;
+  const alive = useContentPulse(sig, hasContent);
   // 展开状态（按 callId 记录）
   const [expanded, setExpanded] = useState({});
 
@@ -32,6 +43,7 @@ export function TraceMcpTools({ trace, open, onClose, index = 0 }) {
       width={300}
       open={open}
       onClose={onClose}
+      headClass={alive ? "alive" : ""}
       index={index}
     >
       <details className="trace-section" open>

@@ -1,7 +1,7 @@
 # 对话位置自动地图标注 · J.A.R.V.I.S. Cyber Audio Spectrum
 
 > 版本：v1 · 2026-08-17
-> 状态：**设计已定稿，待实施**（用户选择先设计、暂不改动代码）
+> 状态：**已实施（2026-08-17 落地，构建通过 + 解析器单测 16/16 PASS）**
 > 目标：chat-panel 对话框中，**每条用户输入 / AI 输出**，只要文本包含地址或位置信息，就自动调用高德 MCP 获取坐标，并在对话框内用高德 JS API 渲染地图、标注位置点（路线则画 polyline）。
 > 前置：高德 MCP 已接入（Phase 1 完成，`mcp.config.json` 已加 `amap`，`.env` 已有 `AMAP_MAPS_API_KEY` Web 服务 Key，Relay 端 `maps_*` 工具可用）。本功能是 Phase 2（地图渲染）的**自动触发演进版**。
 
@@ -184,3 +184,28 @@
 4. **S4 接线 AI 消息**：L803 / L851 后接 `maybeShowMap(...,"ai")`；`executeTool` 内解析 maps_* 返回喂地图（来源②）。
 5. **S5 降级与合规**：补齐 Key 缺失/超时降级卡片 + Referer 白名单说明；`npm run build` 验证；浏览器实测第 9 节用例。
 6. **S6（可选）全局浮层**：`MapPanel.jsx` 汇总视图 + 内联卡片点击放大。
+
+---
+
+## 11. 实施记录（2026-08-17）
+
+### 已落地文件
+- `src/lib/locationExtractor.js` —— 位置实体抽取（正则+词典+置信过滤+子串去重，保留前 3 候选）。
+- `src/lib/mapParse.js` —— `parseGeoMarker`（maps_geo 返回 → 标记）、`parseRoute`（方向工具返回 → 起终点标记；当前高德 MCP 方向工具**不返回 polyline**，故仅标起终点，polyline 分支保留供未来工具）。
+- `src/lib/amapJsApi.js` —— 高德 JS API 2.0 动态加载单例 + 地图/标记/路线封装（GCJ-02 直绘，dark 样式）。
+- `src/components/viz/MapCard.jsx` —— `createMapCardElement(markers, route, role)`，命令式 DOM，IntersectionObserver 懒加载；无 Key B 降级为坐标文本卡片。
+- `src/hooks/useChatController.js` —— 接线：L687 用户输入、L803 AI 终态、L851 AI 错误各接 `maybeShowMap(...).catch(()=>{})`；`executeTool` 内 `maps_geo` / `maps_direction_*` 返回直接喂当前气泡地图卡片（来源②）；同消息坐标去重（WeakMap）。
+- `src/styles/cyber.css` —— `.map-card*` 赛博风样式。
+- `tests/autoMap.test.mjs` —— 16 项单测（抽取+真实 maps_geo/maps_direction 解析+降级），全部 PASS。
+- `.env` —— 新增 `VITE_AMAP_JS_KEY` 占位注释（Key B，启用真实瓦片用）。
+
+### 验证结果
+- `npm run build` 通过（exit 0）。
+- 单测 16/16 PASS，含**真实 Relay 返回**（maps_geo 杭州 → 120.13,30.25；transit 北京南站→首都机场 → 起终点标记）。
+
+### 关键事实修正（实测发现）
+- 高德 MCP 方向类工具（`maps_direction_transit_integrated`/`walking`/`driving`）返回均**不含 polyline**，只有 `route.origin`/`route.destination` 坐标。故路线 polyline 绘制暂不可行，退化为「起终点标记」；代码保留 polyline 分支，待工具支持。
+
+### 运行须知（合规降级）
+- 未配置 `VITE_AMAP_JS_KEY` 时，对话位置标注**降级为坐标文本卡片**（不崩、不硬编码 key）。配置后在 `.env` 填 Key B 并在高德控制台配 Referer 白名单即可加载真实瓦片。
+- 浏览器实测：运行 `npm run dev`，发含地址消息（如「我在杭州市西湖区，明天去上海外滩」）应见内联地图卡片/坐标卡片。

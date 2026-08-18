@@ -15,6 +15,9 @@ import {
   MOVIE_SEARCH_PREFIX,
   AT_COMMANDS,
 } from "../lib/movieSearch.js";
+// 对话位置自动地图标注 → 独立 MapWindow 浮窗（事件驱动）
+import { extractLocations } from "../lib/locationExtractor.js";
+import { parseGeoMarker, parseRoute } from "../lib/mapParse.js";
 
 /**
  * 主对话窗口控制器（集成于频谱可视化器）—— 页面核心交互区。
@@ -367,6 +370,57 @@ export function useChatController() {
       requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight; });
     }
 
+    // ============ 对话位置自动地图标注 → MapWindow 独立浮窗（事件驱动） ============
+    // 两条坐标来源：① 文本抽取（extractLocations）→ maps_geo；② AI tool-loop 调 maps_* 返回。
+    // 输出目标：派发 CustomEvent 到 MapWindow（Portal 浮窗），不再内联插入 DOM。
+
+    // 已派发的坐标去重（避免同一条消息重复推送）
+    const dispatchedCoords = new Set();
+    function alreadyDispatched(key) { return dispatchedCoords.has(key); }
+    function markDispatched(key) { dispatchedCoords.add(key); }
+
+    // 检测前端是否配了 Key B（高德 JS API），决定 MapWindow 渲染真实地图 or 降级文本
+    function hasAmapJsKey() { return !!import.meta.env?.VITE_AMAP_JS_KEY; }
+
+    // 来源①+② 统一入口：拿到 markers/route 后推送到 MapWindow
+    function pushMapToWindow(id, label, markers, route) {
+      // 坐标去重
+      const dedupKey = (markers || []).map((m) => m.lng.toFixed(4) + "," + m.lat.toFixed(4)).join("|");
+      if (!dedupKey && !route) return;
+      if (dedupKey && alreadyDispatched(dedupKey)) return;
+      markDispatched(dedupKey);
+
+      window.dispatchEvent(new CustomEvent("jarvis:map-start", { detail: { id, label, hasJsKey: hasAmapJsKey() } }));
+      // 微任务延迟让 MapWindow 先渲染 loading 卡片，再填数据
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("jarvis:map-ready", {
+          detail: { id, label, markers, route, hasJsKey: hasAmapJsKey() },
+        }));
+      }, 50);
+    }
+
+    // 来源①：对消息文本抽取位置 → maps_geo → 推送 MapWindow
+    async function maybeShowMap(text, role) {
+      try {
+        const cands = extractLocations(text);
+        if (!cands.length) return;
+        const mapId = "map-" + Date.now() + "-" + Math.random().toString(36).slice(2, 6);
+        const allMarkers = [];
+        for (const c of cands) {
+          try {
+            const r = await mcpClient.callTool("maps_geo", { address: c.query });
+            if (!r.isError) {
+              const mk = parseGeoMarker(r.content, c.text);
+              if (mk) allMarkers.push(mk);
+            }
+          } catch (e) { /* 单条地理编码失败忽略 */ }
+        }
+        if (allMarkers.length) pushMapToWindow(mapId, role === "user" ? "你的位置" : "位置标注", allMarkers, null);
+      } catch (e) {
+        console.warn("[map] maybeShowMap 失败：", e && e.message);
+      }
+    }
+
     function appendMessage(role, text, time) {
       const ts = time || Date.now();
       // 归一化显示角色：历史持久化用的是 "assistant"，但气泡样式/复制按钮都按 "ai" 挂载；
@@ -441,6 +495,7 @@ export function useChatController() {
       messagesEl.appendChild(wrap);
       scrollBottom();
       return {
+        el: wrap,
         set: (t) => { textNode.textContent = t; scrollBottom(); },
         finalize: (t) => { textNode.textContent = t; wrap.classList.remove("chat-streaming"); scrollBottom(); },
       };
@@ -685,6 +740,8 @@ export function useChatController() {
         return;
       }
       appendMessage("user", raw);
+      // 来源①：用户输入含位置 → 自动地图标注（fire-and-forget，不阻塞发送）
+      maybeShowMap(raw, "user").catch(() => {});
       input.value = "";
       autoGrow();
       updateSend();
@@ -777,6 +834,24 @@ export function useChatController() {
         window.dispatchEvent(new CustomEvent("jarvis:mcp-tool-start", { detail: { name } }));
         try {
           const r = await mcpClient.callTool(name, args);
+          // 来源②：AI tool-loop 调 maps_* 工具 → 推送 MapWindow 独立浮窗
+          if (!r.isError) {
+            if (name === "maps_geo") {
+              const mk = parseGeoMarker(r.content, args && args.address);
+              if (mk) pushMapToWindow(
+                "map-tool-" + (callId || Date.now()),
+                args?.address || "位置标注",
+                [mk], null
+              );
+            } else if (/^maps_direction_/.test(name)) {
+              const rt = parseRoute(r.content);
+              if (rt) pushMapToWindow(
+                "map-route-" + (callId || Date.now()),
+                "路线标注",
+                rt.markers, rt
+              );
+            }
+          }
           return { content: r.content, isError: r.isError };
         } finally {
           window.dispatchEvent(new CustomEvent("jarvis:mcp-tool-end", { detail: { name } }));
@@ -801,6 +876,8 @@ export function useChatController() {
 
         if (!started) beginStream();          // 极少见：无任何增量也需定稿
         if (bubble) bubble.finalize(result.finalContent);
+        // 来源①：AI 终态文本含位置 → 自动地图标注
+        maybeShowMap(result.finalContent, "ai").catch(() => {});
         state.history.push({ role: "assistant", text: result.finalContent, time: Date.now() });
         saveHistory();
         runImagePipeline(result.finalContent);   // 终态触发：把最终回答额外生成一张配图（旁路，不影响文本）
@@ -849,6 +926,8 @@ export function useChatController() {
         // 渲染最终文本到气泡（已流式则定稿，否则新建）
         if (bubble) bubble.finalize(finalText);
         else appendMessage("ai", finalText);
+        // 来源①：AI 错误/兜底文本含位置 → 自动地图标注
+        maybeShowMap(finalText, "ai").catch(() => {});
         runImagePipeline(finalText);   // 兜底/错误路径同样配图（旁路，不影响文本）
         if (window.CyberFx) window.CyberFx.idle();
       } finally {

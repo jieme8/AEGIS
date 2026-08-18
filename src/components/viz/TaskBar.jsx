@@ -8,11 +8,13 @@ import { useEffect, useState } from "react";
 const TASKS = [
   { id: "task-chat",    label: "对话", icon: "▸", onClick: () => document.getElementById("openChat")?.click(), selfActive: true },
   { id: "task-mcp",     label: "MCP",  icon: "▣", onClick: () => document.getElementById("openMcp")?.click(), selfActive: true },
+  { id: "task-map",     label: "地图", icon: "◉", selfActive: false },
   { id: "task-dev",     label: "调试", icon: "⚙", onClick: () => window.toggleDevMode?.(), selfActive: true },
+  { id: "task-features", label: "清单", icon: "≡", selfActive: false },
   { id: "task-settings", label: "设置", icon: "◫", selfActive: true },
 ];
 
-export function TaskBar({ active, onActivate, onOpenSettings, settingsOpen }) {
+export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeatures, featuresOpen, onOpenSettings, settingsOpen }) {
   // 调试按钮反映真实 dev-mode 状态（其他按钮沿用选中态）
   const [devOn, setDevOn] = useState(false);
   useEffect(() => {
@@ -30,7 +32,11 @@ export function TaskBar({ active, onActivate, onOpenSettings, settingsOpen }) {
         {TASKS.map((t, i) => {
           const isActive = t.id === "task-settings"
             ? settingsOpen
-            : (t.selfActive ? devOn : active === t.id);
+            : t.id === "task-map"
+              ? mapOpen
+              : t.id === "task-features"
+                ? featuresOpen
+                : (t.selfActive ? devOn : active === t.id);
           return (
             <button
               key={t.id}
@@ -39,6 +45,8 @@ export function TaskBar({ active, onActivate, onOpenSettings, settingsOpen }) {
               className={"tb-btn" + (isActive ? " active" : "")}
               onClick={() => {
                 if (t.id === "task-settings") { onOpenSettings?.(); return; }
+                if (t.id === "task-map") { onToggleMap?.(); return; }
+                if (t.id === "task-features") { onToggleFeatures?.(); return; }
                 t.onClick?.();
                 if (!t.selfActive) onActivate?.(active === t.id ? null : t.id);
               }}

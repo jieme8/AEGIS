@@ -967,6 +967,21 @@
     max-height: 86vh; overflow-y: auto;
     padding: 16px 18px 18px;
     border-radius: 12px;
+    /* 赛博底色：深蓝玻璃渐变 + 暗网格 + 青色描边辉光 */
+    background:
+      linear-gradient(180deg, rgba(12,22,40,0.97), rgba(6,12,24,0.98));
+    background-image:
+      linear-gradient(180deg, rgba(12,22,40,0.97), rgba(6,12,24,0.98)),
+      linear-gradient(rgba(0,240,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,240,255,0.04) 1px, transparent 1px);
+    background-size: auto, 22px 22px, 22px 22px;
+    background-position: 0 0, -1px -1px, -1px -1px;
+    border: 1px solid rgba(0,240,255,0.40);
+    box-shadow:
+      0 0 50px rgba(0,240,255,0.20),
+      0 0 110px rgba(0,240,255,0.08),
+      inset 0 0 30px rgba(0,240,255,0.05),
+      inset 0 1px 0 rgba(0,240,255,0.12);
     animation: settingsPop .2s ease;
   }
   .settings-head {
@@ -1164,12 +1179,39 @@
   .float-panel.dragging { cursor: grabbing; }
 
   .float-head {
+    position: relative; overflow: hidden;
     display: flex; align-items: center; gap: 8px; padding: 7px 11px;
     border-bottom: 1px solid rgba(0,240,255,0.22);
     background: linear-gradient(90deg, rgba(0,240,255,0.10), rgba(177,75,255,0.06));
     cursor: grab; touch-action: none; user-select: none;
+    /* 默认无动画：避免空闲（无内容更新）时标题栏持续闪烁 */
   }
   .float-head:active { cursor: grabbing; }
+  /* 顶部流光扫过：默认隐藏，仅在该数据流有内容更新（.alive）时出现 */
+  .float-head::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0,240,255,0.95), transparent);
+    background-size: 42% 100%; background-repeat: no-repeat;
+    opacity: 0;
+    pointer-events: none;
+  }
+  /* —— 仅在内容更新时给标题栏加 .alive：呼吸辉光 + 顶部流光 —— */
+  .float-head.alive {
+    animation: float-head-alive 3.4s ease-in-out infinite;
+  }
+  .float-head.alive::before {
+    animation: float-head-sweep 2.6s ease-in-out infinite;
+  }
+  @keyframes float-head-alive {
+    0%, 100% { background: linear-gradient(90deg, rgba(0,240,255,0.10), rgba(177,75,255,0.06)); box-shadow: inset 0 0 0 rgba(0,240,255,0); }
+    50%      { background: linear-gradient(90deg, rgba(0,240,255,0.20), rgba(177,75,255,0.12)); box-shadow: inset 0 0 12px rgba(0,240,255,0.20); }
+  }
+  @keyframes float-head-sweep {
+    0%   { background-position: -42% 0; opacity: 0; }
+    28%  { opacity: 1; }
+    72%  { opacity: 1; }
+    100% { background-position: 142% 0; opacity: 0; }
+  }
   .float-title {
     flex: 1 1 auto; font-size: 12px; letter-spacing: 1px; font-weight: 700;
     color: var(--cyan); text-shadow: 0 0 8px rgba(0,240,255,0.6);
@@ -1316,8 +1358,8 @@
   /* ===================== MCP 服务器列表浮层 · HUD 科技风 ===================== */
   .mcp-panel {
     position: fixed; top: 80px; left: 16px; right: auto;
-    width: 320px; max-width: calc(100vw - 32px);
-    height: 580px;
+    width: 305px; max-width: calc(100vw - 32px);
+    height: 600px;
     display: flex; flex-direction: column; overflow: hidden;
     z-index: 60;
     background:
@@ -1954,3 +1996,259 @@
   .ms-revealing .ms-item.ms-show,
   .ms-revealing .ms-tips.ms-show,
   .ms-revealing .ms-warns.ms-show { opacity: 1; transform: none; }
+
+
+  /* ===== 对话位置自动地图标注 · 内联地图卡片 ===== */
+  .map-card {
+    width: min(340px, 86%);
+    margin: 6px 0 10px;
+    border-radius: 12px;
+    background: rgba(4, 10, 18, 0.78);
+    border: 1px solid rgba(0, 240, 255, 0.28);
+    box-shadow: inset 0 0 18px rgba(0, 240, 255, 0.04), 0 4px 18px rgba(0, 0, 0, 0.35);
+    overflow: hidden;
+    backdrop-filter: blur(2px);
+  }
+  .map-card-ai { align-self: flex-start; }
+  .map-card-user { align-self: flex-end; }
+  .map-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 7px 10px 6px; border-bottom: 1px solid rgba(0, 240, 255, 0.16);
+  }
+  .map-card-title {
+    font-size: 11px; letter-spacing: 1.5px; font-weight: 600; text-transform: uppercase;
+    color: var(--cyan); text-shadow: 0 0 8px rgba(0, 240, 255, 0.4);
+  }
+  .map-card-close {
+    width: 20px; height: 20px; padding: 0; cursor: pointer; line-height: 1;
+    color: var(--cyan); background: rgba(0, 240, 255, 0.08);
+    border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 5px;
+    font-size: 15px; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, box-shadow .15s;
+  }
+  .map-card-close:hover { background: rgba(0, 240, 255, 0.2); box-shadow: 0 0 8px rgba(0, 240, 255, 0.35); }
+  .map-card-body { padding: 8px 10px 10px; }
+  .map-card-canvas { width: 100%; height: 200px; border-radius: 8px; overflow: hidden; background: rgba(0, 0, 0, 0.35); }
+  /* 降级：无 Key / 加载失败 → 位置文本卡片 */
+  .map-card--text .map-card-body { padding-top: 6px; }
+  .map-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .map-card-list li {
+    position: relative; padding: 5px 8px 5px 18px; font-size: 12.5px; line-height: 1.5;
+    color: var(--txt); background: rgba(0, 240, 255, 0.06);
+    border: 1px solid rgba(0, 240, 255, 0.18); border-radius: 6px; word-break: break-all;
+  }
+  .map-card-list li::before {
+    content: ""; position: absolute; left: 7px; top: 11px; width: 5px; height: 5px;
+    border-radius: 50%; background: var(--cyan); box-shadow: 0 0 6px rgba(0, 240, 255, 0.6);
+  }
+  .map-card-hint { margin-top: 7px; font-size: 11px; line-height: 1.5; color: rgba(0, 240, 255, 0.55); }
+
+
+  /* —— 独立地图窗口（Portal 浮层，与 ImageWindow 同款拖拽/缩放） —— */
+  .map-window {
+    position: fixed; left: 640px; top: 500px; right: auto; bottom: auto;
+    width: 320px; height: 320px;
+    z-index: 70; display: flex; flex-direction: column;
+    background: rgba(6,10,18,0.92);
+    border: 1px solid rgba(0,240,255,0.42);
+    box-shadow: 0 0 55px rgba(0,240,255,0.15), inset 0 0 30px rgba(0,240,255,0.05);
+    backdrop-filter: blur(9px); border-radius: 10px; overflow: hidden;
+    animation: mwpop .22s ease-out;
+  }
+  .map-window.dragging { opacity: .96; }
+  .map-window.resizing { cursor: ns-resize; }
+  @keyframes mwpop { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: none; } }
+
+  /* 标题栏（可拖动） */
+  .mw-head {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; cursor: move; user-select: none;
+    border-bottom: 1px solid rgba(0,240,255,0.2);
+    background: rgba(0,240,255,0.05);
+  }
+  .mw-title { font-size: 12px; letter-spacing: .8px; color: var(--cyan); font-weight: 600; white-space: nowrap; }
+  .mw-count { flex: 1 1 auto; font-size: 10px; color: var(--dim); }
+  .mw-close {
+    width: 22px; height: 22px; border-radius: 6px; cursor: pointer; flex: 0 0 auto;
+    border: 1px solid rgba(0,240,255,0.3); background: rgba(4,6,12,.5); color: var(--cyan);
+    font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s, color .15s;
+  }
+  .mw-close:hover { color: var(--magenta); border-color: var(--magenta); }
+
+  /* 主体滚动区 */
+  .mw-body { flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+  .mw-body::-webkit-scrollbar { width: 6px; }
+  .mw-body::-webkit-scrollbar-track { background: transparent; }
+  .mw-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  .mw-body::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.5); }
+
+  /* 空状态 */
+  .mw-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; text-align: center; color: var(--dim); padding: 36px 18px; margin: auto 0;
+  }
+  .mw-empty-icon {
+    width: 52px; height: 52px; opacity: .5;
+    fill: none; stroke: var(--cyan); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round;
+    filter: drop-shadow(0 0 6px rgba(0,240,255,0.35));
+    animation: mw-empty-pulse 2.4s ease-in-out infinite;
+  }
+  @keyframes mw-empty-pulse {
+    0%, 100% { opacity: .35; transform: translateY(0); }
+    50% { opacity: .7; transform: translateY(-2px); }
+  }
+  .mw-empty-title { font-size: 13px; letter-spacing: 2px; color: var(--cyan); font-weight: 600; text-shadow: 0 0 8px rgba(0,240,255,0.35); }
+  .mw-empty-hint { font-size: 11px; line-height: 1.9; color: var(--dim); opacity: .85; }
+
+  /* 地图卡片 */
+  .mw-card {
+    background: rgba(0,240,255,0.06); border: 1px solid rgba(0,240,255,0.28);
+    border-radius: 9px; padding: 8px; animation: mwpop .2s ease-out; overflow: hidden;
+  }
+  .mw-card--text { background: rgba(0,240,255,0.04); }
+  .mw-card-label {
+    font-size: 11px; letter-spacing: 1px; font-weight: 600; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 6px; text-shadow: 0 0 6px rgba(0,240,255,0.3);
+  }
+
+  /* 地图画布包装：loading 与 canvas 平级，避免高德清空 canvas 时误删 React 节点 */
+  .mw-map-wrap {
+    position: relative; width: 100%; height: 220px; border-radius: 7px; overflow: hidden;
+    border: 1px solid rgba(0,240,255,0.15); background: rgba(0,0,0,0.4);
+  }
+  .mw-map-canvas {
+    position: absolute; inset: 0;
+    /* 高德 JS API 2.0 的 setMapStyle("amap://styles/dark") 会异步崩溃，故用 CSS 滤镜
+       模拟赛博夜景地图：浅色底图 → 暗色底 + 亮色路名（经典 invert+hue-rotate 夜间方案） */
+    filter: invert(0.92) hue-rotate(180deg) saturate(0.85) brightness(0.95);
+  }
+  /* 加载态（覆盖在地图画布上，不是 canvas 子节点） */
+  .mw-loading {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    color: var(--cyan); font-size: 11px; letter-spacing: 1px;
+  }
+  .mw-spinner {
+    width: 20px; height: 20px; border: 2px solid rgba(0,240,255,0.2);
+    border-top-color: var(--cyan); border-radius: 50%;
+    animation: mw-spin .7s linear infinite;
+  }
+  @keyframes mw-spin { to { transform: rotate(360deg); } }
+
+  /* 卡片元信息（标记点标签 + 路线标签） */
+  .mw-card-meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .mw-marker-tag, .mw-route-tag {
+    font-size: 10px; padding: 2px 7px; border-radius: 4px;
+    background: rgba(0,240,255,0.1); color: var(--cyan); border: 1px solid rgba(0,240,255,0.25);
+    letter-spacing: .5px;
+  }
+  .mw-route-tag { border-color: rgba(255,100,100,0.3); color: #ff8888; background: rgba(255,100,100,0.08); }
+
+  /* 文本降级列表 */
+  .mw-card-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .mw-card-list li {
+    padding: 5px 8px 5px 16px; font-size: 11.5px; line-height: 1.5;
+    color: var(--txt); background: rgba(0,240,255,0.06);
+    border: 1px solid rgba(0,240,255,0.16); border-radius: 6px; word-break: break-all;
+    position: relative;
+  }
+  .mw-card-list li::before {
+    content: ""; position: absolute; left: 6px; top: 10px; width: 4px; height: 4px;
+    border-radius: 50%; background: var(--cyan); box-shadow: 0 0 5px rgba(0,240,255,0.6);
+  }
+  .mw-card-hint { margin-top: 6px; font-size: 10px; line-height: 1.5; color: rgba(0,240,255,0.45); }
+
+  /* 底部 resize 拖拽手柄 */
+  .mw-resize {
+    flex: 0 0 auto; height: 6px; cursor: ns-resize;
+    display: flex; align-items: center; justify-content: center;
+    gap: 3px; padding-bottom: 2px; transition: background .15s;
+  }
+  .mw-resize::before, .mw-resize::after {
+    content: ""; width: 24px; height: 2px; border-radius: 1px;
+    background: rgba(0,240,255,0.25); transition: background .15s;
+  }
+  .mw-resize:hover::before, .mw-resize:hover::after { background: rgba(0,240,255,0.55); }
+  .mw-resize:active { background: rgba(0,240,255,0.08); }
+
+  /* —— 独立「功能清单」窗口（只读清单，实时反映附加功能开启状态） —— */
+  .feat-window {
+    position: fixed; left: 980px; top: 80px; right: auto; bottom: auto;
+    width: 340px; height: 460px;
+    z-index: 70; display: flex; flex-direction: column;
+    background: rgba(6,10,18,0.9);
+    border: 1px solid rgba(0,240,255,0.42);
+    box-shadow: 0 0 55px rgba(0,240,255,0.18), inset 0 0 30px rgba(0,240,255,0.05);
+    backdrop-filter: blur(9px); border-radius: 10px; overflow: hidden;
+    animation: iwpop .22s ease-out;
+  }
+  .feat-window.dragging { opacity: .96; }
+  .feat-window.resizing { cursor: ns-resize; }
+  .fl-head {
+    flex: 0 0 auto; display: flex; align-items: center; gap: 8px;
+    padding: 9px 12px; cursor: move; user-select: none;
+    border-bottom: 1px solid rgba(0,240,255,0.2);
+    background: rgba(0,240,255,0.05);
+  }
+  .fl-title { font-size: 12px; letter-spacing: .8px; color: var(--cyan); font-weight: 600; white-space: nowrap; }
+  .fl-count { flex: 1 1 auto; font-size: 10px; color: var(--dim); }
+  .fl-close {
+    width: 22px; height: 22px; border-radius: 6px; cursor: pointer; flex: 0 0 auto;
+    border: 1px solid rgba(0,240,255,0.3); background: rgba(4,6,12,.5); color: var(--cyan);
+    font-size: 15px; line-height: 1; display: flex; align-items: center; justify-content: center;
+  }
+  .fl-close:hover { color: var(--magenta); border-color: var(--magenta); }
+  .fl-body { flex: 1 1 auto; overflow-y: auto; padding: 10px 12px 4px; display: flex; flex-direction: column; gap: 14px; }
+  .fl-body::-webkit-scrollbar { width: 6px; }
+  .fl-body::-webkit-scrollbar-track { background: transparent; }
+  .fl-body::-webkit-scrollbar-thumb { background: rgba(0,240,255,0.3); border-radius: 6px; }
+  .fl-body::-webkit-scrollbar-thumb:hover { background: rgba(0,240,255,0.5); }
+  .fl-group { display: flex; flex-direction: column; gap: 7px; }
+  .fl-group-title {
+    font-size: 10px; letter-spacing: 1.5px; color: var(--cyan);
+    text-transform: uppercase; opacity: .8;
+    border-left: 2px solid var(--cyan); padding-left: 7px; margin-bottom: 1px;
+  }
+  .fl-item {
+    background: rgba(0,240,255,0.05); border: 1px solid rgba(0,240,255,0.18);
+    border-radius: 8px; padding: 8px 10px; animation: iwpop .2s ease-out;
+  }
+  .fl-item-head { display: flex; align-items: center; gap: 7px; }
+  .fl-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+  }
+  .fl-dot.on {
+    background: var(--cyan); box-shadow: 0 0 8px rgba(0,240,255,0.8);
+    animation: fl-glow 1.8s ease-in-out infinite;
+  }
+  .fl-dot.off { background: rgba(255,255,255,0.25); }
+  @keyframes fl-glow { 0%,100% { opacity: .6; } 50% { opacity: 1; } }
+  .fl-name { font-size: 12.5px; font-weight: 600; color: var(--txt); flex: 1 1 auto; }
+  .fl-state { font-size: 9.5px; letter-spacing: .5px; color: var(--dim); flex: 0 0 auto; }
+  .fl-state { color: rgba(0,240,255,0.7); }
+  .fl-item:has(.fl-dot.off) .fl-state { color: rgba(255,255,255,0.35); }
+  .fl-desc { font-size: 11px; line-height: 1.55; color: var(--dim); margin-top: 4px; }
+  .fl-meta { display: flex; flex-direction: column; gap: 2px; margin-top: 5px; }
+  .fl-detail {
+    font-size: 10px; color: rgba(0,240,255,0.65);
+    background: rgba(0,240,255,0.07); border: 1px solid rgba(0,240,255,0.16);
+    border-radius: 5px; padding: 2px 6px; align-self: flex-start; max-width: 100%;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fl-src {
+    font-size: 9.5px; color: rgba(255,255,255,0.4);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fl-resize {
+    flex: 0 0 auto; height: 6px; cursor: ns-resize;
+    display: flex; align-items: center; justify-content: center;
+    gap: 3px; padding-bottom: 2px; transition: background .15s;
+  }
+  .fl-resize::before, .fl-resize::after {
+    content: ""; width: 24px; height: 2px; border-radius: 1px;
+    background: rgba(0,240,255,0.25); transition: background .15s;
+  }
+  .fl-resize:hover::before, .fl-resize:hover::after { background: rgba(0,240,255,0.55); }
+  .fl-resize:active { background: rgba(0,240,255,0.08); }

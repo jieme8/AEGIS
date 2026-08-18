@@ -50,4 +50,5 @@ pnpm-debug.log*
 package-lock.json
 .workbuddy
 bun.lock
+dist-tmp
 

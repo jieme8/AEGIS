@@ -19,6 +19,9 @@ import { Hud, ChatToggle, McpToggle, ScreenSizeBadge } from "./components/hud/Hu
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
 import { McpPanel } from "./components/mcp/McpPanel.jsx";
 import { ImageWindow } from "./components/viz/ImageWindow.jsx";
+import { MapWindow } from "./components/viz/MapWindow.jsx";
+import { MapErrorBoundary } from "./components/viz/MapErrorBoundary.jsx";
+import { FeatureListWindow } from "./components/viz/FeatureListWindow.jsx";
 import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
@@ -50,6 +53,10 @@ export default function App() {
   // MCP 浮层默认开启：按需求直接展示服务器列表（不再默认隐藏）。
   const [mcpOpen, setMcpOpen] = useState(true);
   const [activeTask, setActiveTask] = useState("task-image");
+  // 地图浮窗独立开关（与 activeTask 解耦，地图可独立开合）；默认打开
+  const [mapOpen, setMapOpen] = useState(true);
+  // 功能清单浮窗独立开关（与 activeTask 解耦，开清单不再误关配图窗）
+  const [featuresOpen, setFeaturesOpen] = useState(false);
   // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -77,9 +84,17 @@ export default function App() {
     return () => window.removeEventListener("jarvis:image-start", onStart);
   }, []);
 
-  // 清空对话时关闭所有面板（配图窗等）
+  // 首次位置标注时自动打开地图窗口
   useEffect(() => {
-    const onCloseAll = () => setActiveTask(null);
+    const onMapStart = () => setMapOpen(true);
+    window.addEventListener("jarvis:map-start", onMapStart);
+    return () => window.removeEventListener("jarvis:map-start", onMapStart);
+  }, []);
+
+  // 清空对话时不关闭配图窗（image 由 activeTask 控制，保留默认打开）；
+  // 仅同步关闭功能清单浮窗（与 activeTask 解耦的独立开关）。
+  useEffect(() => {
+    const onCloseAll = () => { setFeaturesOpen(false); };
     window.addEventListener("jarvis:close-all-panels", onCloseAll);
     return () => window.removeEventListener("jarvis:close-all-panels", onCloseAll);
   }, []);
@@ -115,7 +130,6 @@ export default function App() {
         <div><span className="k">FPS</span> <span className="v" id="hud-fps">--</span></div>
         <div><span className="k">ENERGY</span> <span className="v" id="hud-energy">0%</span></div>
         <div><span className="k">PEAK</span> <span className="v" id="hud-peak">0%</span></div>
-        <div><span className="k">FREQ</span> <span className="v" id="hud-freq">20–20k</span></div>
         <div><span className="k">GAIN</span> <span className="v mag">+0.0dB</span></div>
         <ScreenSizeBadge />
       </Hud>
@@ -139,15 +153,26 @@ export default function App() {
       {/* 独立配图窗口：生图结果渲染在这里，不再挤进聊天框 */}
       <ImageWindow open={activeTask === "task-image"} onClose={() => setActiveTask(null)} />
 
+      {/* 独立地图窗口：位置标注渲染在这里，不再内联到对话气泡 */}
+      <MapErrorBoundary>
+        <MapWindow open={mapOpen} onClose={() => setMapOpen(false)} />
+      </MapErrorBoundary>
+
+      {/* 独立功能清单窗口：枚举 chat-panel 所有附加功能及其开启状态 */}
+      <FeatureListWindow open={featuresOpen} onClose={() => setFeaturesOpen(false)} />
+
       {/* 设置窗口：语言模型 / 生图模型 / 生图比例 三个切换器迁入此处 */}
       <SettingsPanel open={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
-      {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中 */}
+      {/* 油价行情卡片：横向长条，复用主页 HUD 视觉语言，停靠底部居中。
+          nextAdjust 不传 → 面板按官方年度调价表从“今天”动态推算下一次窗口，
+          倒计时与“更新于”时间戳每分钟随系统时间刷新，不再卡死在旧日期。
+          注：price/prevClose 目前为展示用占位值（无实时油价 feed），
+          接入真实数据源后替换 data 即可。 */}
       <div className="oil-dock">
         <OilPricePanel
           booted={booted}
           data={{ name: "上海 92# 汽油", unit: "¥", price: 7.93, prevClose: 7.38 }}
-          nextAdjust={new Date("2026-08-14T24:00:00")}
           forecast={{ direction: "down", text: "预计小幅下调" }}
         />
       </div>
@@ -156,6 +181,10 @@ export default function App() {
       <TaskBar
         active={activeTask}
         onActivate={setActiveTask}
+        onToggleMap={() => setMapOpen((v) => !v)}
+        mapOpen={mapOpen}
+        onToggleFeatures={() => setFeaturesOpen((v) => !v)}
+        featuresOpen={featuresOpen}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsOpen={settingsOpen}
       />

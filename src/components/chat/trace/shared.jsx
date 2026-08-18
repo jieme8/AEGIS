@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MODEL_CONFIG } from "../../../config/modelConfig.js";
 
 // ---- 状态元数据（供 01 请求状态使用）----
@@ -18,6 +18,30 @@ export const MCP_STATUS = {
   unavailable: { label: "MCP 不可用（已降级）", cls: "warn" },
   error:       { label: "MCP 错误",       cls: "err" },
 };
+
+/**
+ * 让浮层标题栏的「动态效果（呼吸 + 流光）」只在内容真正更新时出现：
+ *   - 打开瞬间（首次渲染）不脉冲，避免空内容/挂载即闪；
+ *   - 仅当「内容签名」变化且确有内容时才加 alive，3.7s 后自动消失；
+ *   - 流式更新期间签名频繁变化 → 计时器不断重置 → 持续脉冲，停更后自然收尾。
+ * @param {string} signature 可序列化内容指纹（变化即视为更新）
+ * @param {boolean} hasContent 当前是否确有内容（无内容不脉冲）
+ */
+export function useContentPulse(signature, hasContent) {
+  const [alive, setAlive] = useState(false);
+  const timer = useRef(null);
+  const first = useRef(true);
+  useEffect(() => {
+    if (first.current) { first.current = false; return; }   // 挂载首帧不脉冲
+    if (!hasContent) return;
+    setAlive(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setAlive(false), 3700);
+  }, [signature, hasContent]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  return alive;
+}
+
 
 // ---- 格式化时间戳 ----
 export function fmtTime(ts) {
