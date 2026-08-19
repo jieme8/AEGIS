@@ -155,6 +155,17 @@ function ngrams(s) {
   return [...out];
 }
 
+// 单字（unigram）匹配：用于短口语问句的回退召回，例如「我住哪里」里的「住」
+// 可以命中「居住地址」。权重远低于 bigram，避免正常查询被噪声污染。
+function unigrams(s) {
+  const t = String(s || "").toLowerCase();
+  const out = new Set();
+  for (const ch of t) {
+    if (/[\u4e00-\u9fa5a-z0-9]/.test(ch)) out.add(ch);
+  }
+  return [...out];
+}
+
 // 单条记录相对于查询词的相关性打分：
 //   - 关键词命中（key 权重高、value 权重低）
 //   - 时间衰减（updatedAt 越近越高，30 天半衰期）
@@ -178,6 +189,23 @@ function scoreRecord(rec, key, grams, fullQ) {
   const imp = typeof rec.importance === "number" ? rec.importance : 0.5;
   const access = Math.log((rec.accessCount || 0) + 1) * 0.1;
   return kw * (1 + imp) + recency * 0.5 + access;
+}
+
+// 回退打分：单字重叠。仅当 bigram 完全无命中时使用，权重很低，
+// 主要解决「我住哪里」这种口语短问无法命中「居住地址」的问题。
+function scoreRecordUnigram(rec, key, chars) {
+  const value = String((rec && rec.value) || "").toLowerCase();
+  const keyStr = String(key || "").toLowerCase();
+  let hits = 0;
+  for (const ch of chars) {
+    if (!ch) continue;
+    if (keyStr.includes(ch)) hits += 1.5;
+    if (value.includes(ch)) hits += 0.5;
+  }
+  if (hits <= 0) return 0;
+  const recency = 1 / (1 + daysSince(rec.updatedAt) / 30);
+  const imp = typeof rec.importance === "number" ? rec.importance : 0.5;
+  return hits * 0.35 * (1 + imp) + recency * 0.3;
 }
 
 const server = new Server(
@@ -330,6 +358,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               type: rec.type,
               score: Math.round(sc * 100) / 100,
             });
+          }
+        }
+        // 回退：bigram 完全无命中时，用单字重叠再试一次，解决口语短问漏召回
+        if (scored.length === 0) {
+          const chars = unigrams(fullQ);
+          for (const key of Object.keys(store)) {
+            const rec = store[key];
+            if (types && types.length && (!rec.type || !types.includes(rec.type))) continue;
+            const sc = scoreRecordUnigram(rec, key, chars);
+            if (sc > 0) {
+              rec.accessCount = (rec.accessCount || 0) + 1;
+              rec.lastAccessedAt = Date.now();
+              scored.push({
+                key,
+                value: rec.value,
+                type: rec.type,
+                score: Math.round(sc * 100) / 100,
+              });
+            }
           }
         }
         scored.sort((x, y) => y.score - x.score);

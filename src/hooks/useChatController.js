@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MODEL_CONFIG } from "../config/modelConfig.js";
 import { parseSSEChunk } from "../lib/sse.js";
 import { isDevMode, onDevModeChange } from "../lib/devMode.js";
@@ -8,7 +8,7 @@ import { runAgentLoop } from "../lib/agentLoop.js";
 import { providerManager } from "../lib/providerManager.js";
 import { runImagePipeline } from "../lib/imagePipeline.js";
 import { runAutoMemory } from "../lib/autoMemory.js";
-import { recallMemories } from "../lib/recall.js";
+import { recallMemories, extractMemoryToolReads } from "../lib/recall.js";
 // 渲染前过滤：脱敏 @image#N:"..." / <image_local_path>...</image_local_path> / Windows 路径等本地图片引用
 import { sanitizeImageRefs } from "../lib/traceSanitize.js";
 import {
@@ -23,8 +23,8 @@ import {
 import { populateDiscovery } from "../lib/movieDiscovery.js";
 // 内容生成后校验引擎：溯源 / 可信度分级，落实「事实准确性为最高优先级」
 import { verifyAnswer, extractLiveSources, LEVEL_META } from "../lib/answerVerifier.js";
-// 网页查看器：AI 回复链接在独立浮层打开（自动提取 + 可达性探测）
-import { dispatchOpenUrls, extractUrls, probeUrl } from "../lib/webViewer.js";
+// 网页查看器：AI 回复链接在独立浮层打开（自动提取全部网址开窗）
+import { dispatchOpenUrls, extractUrls } from "../lib/webViewer.js";
 
 // 事实准确性优先 · 系统级约束（最高优先级，追加进 system 提示词，约束每一次回复）
 const FACTUALITY_DIRECTIVES =
@@ -193,6 +193,53 @@ function attachProvenanceFooter(wrap, report, opts = {}) {
   head.appendChild(meta);
   footer.appendChild(head);
 
+  // 记忆召回：在来源脚注里显示「本次读取了 N 条长期记忆」，包含 proactive 召回 + LLM 工具调用读取
+  const proactiveCount = opts.recall ? (opts.recall.count || 0) : 0;
+  const toolReads = Array.isArray(opts.toolReads) ? opts.toolReads : [];
+  const toolCount = toolReads.length;
+  const totalReads = proactiveCount + toolCount;
+  if (opts.recall || toolCount > 0) {
+    const memLine = document.createElement("div");
+    memLine.className = "src-memory";
+    const memLabel = document.createElement("span");
+    memLabel.className = "src-memory-label";
+    if (opts.recall && opts.recall.enabled === false) {
+      memLabel.textContent = "🧠 记忆召回已关闭";
+      memLine.classList.add("muted");
+    } else if (totalReads > 0) {
+      const via =
+        proactiveCount > 0 && toolCount > 0
+          ? `（主动召回 ${proactiveCount} 条，工具读取 ${toolCount} 条）`
+          : proactiveCount > 0
+            ? "（主动召回）"
+            : "（通过工具调用读取）";
+      memLabel.textContent = `🧠 本次读取记忆 ${totalReads} 条 ${via}`;
+    } else {
+      memLabel.textContent = "🧠 本次未召回相关记忆";
+      memLine.classList.add("muted");
+    }
+    memLine.appendChild(memLabel);
+    const chips = document.createElement("div");
+    chips.className = "src-memory-chips";
+    (opts.recall && opts.recall.entries || []).forEach((e) => {
+      const c = document.createElement("span");
+      c.className = "src-memory-chip";
+      c.textContent = e.key;
+      c.title = (e.value || "").slice(0, 200);
+      chips.appendChild(c);
+    });
+    toolReads.forEach((inv) => {
+      const c = document.createElement("span");
+      c.className = "src-memory-chip tool";
+      const key = (inv.args && (inv.args.key || inv.args.query)) || inv.name;
+      c.textContent = key;
+      c.title = `[${inv.name}] ${typeof inv.result === "string" ? inv.result.slice(0, 200) : JSON.stringify(inv.result || "").slice(0, 200)}`;
+      chips.appendChild(c);
+    });
+    if (chips.children.length) memLine.appendChild(chips);
+    footer.appendChild(memLine);
+  }
+
   // 来源可信度点（点击直达）
   if (report && report.sources.length) {
     const list = document.createElement("div");
@@ -244,6 +291,8 @@ function attachProvenanceFooter(wrap, report, opts = {}) {
 export function useChatController() {
   // —— 过程可视化状态（最小侵入：仅这一份 React 状态，抽屉是唯一消费者）——
   const [trace, setTrace] = useState(null);
+  const traceRef = useRef(trace);
+  useEffect(() => { traceRef.current = trace; }, [trace]);
   const [traceOpen, setTraceOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);   // 面板开合由 React 状态驱动，避免重渲染把 className 写回导致关闭失效
   // —— AI 主动给出的"行动项"：终态文本命中关键词 → 在 ChatMessages 下发挂一个 inline 按钮；
@@ -918,9 +967,10 @@ export function useChatController() {
         FACTUALITY_DIRECTIVES;
       let content = base;
       // 主动召回：把和用户当前问题相关的长期记忆注入 system，使助手自带上下文
+      let recall = { block: "", count: 0, entries: [], query: userText || "", enabled: true };
       try {
-        const block = await recallMemories(userText || "");
-        if (block) content = base + "\n\n" + block;
+        recall = await recallMemories(userText || "");
+        if (recall && recall.block) content = base + "\n\n" + recall.block;
       } catch (e) {
         /* 召回失败不影响主流程，退化为无记忆版本 */
       }
@@ -930,7 +980,7 @@ export function useChatController() {
         content: m.text,
       }));
       const messages = [systemMsg, ...historyMsgs];
-      return { systemMsg, historyMsgs, messages };
+      return { systemMsg, historyMsgs, messages, recall };
     }
 
     // ---------- 真实大模型流式调用（LongCat · OpenAI 兼容 SSE） ----------
@@ -1092,6 +1142,18 @@ export function useChatController() {
           sources: [],
           sentAt: Date.now(),
         },
+        // 主动记忆召回：本轮对话构造 prompt 时，按用户问题检索到的长期记忆
+        memory: {
+          enabled: !!(built.recall && built.recall.enabled),
+          query: (built.recall && built.recall.query) || "",
+          count: (built.recall && built.recall.count) || 0,
+          entries: (built.recall && built.recall.entries) || [],
+          status: !built.recall || !built.recall.enabled
+            ? "disabled"
+            : (built.recall.count || 0) > 0
+              ? "hit"
+              : "empty",
+        },
       };
       setTrace(traceInit);
       setTraceOpen(true);                     // 对话发起瞬间自动弹出浮层
@@ -1202,19 +1264,13 @@ export function useChatController() {
           sentAt: traceInit.sentAt,
         });
         if (bubble) bubble.finalize(result.finalContent);
-        // 自动打开网页：AI 终态含 URL 时，先探测可达性，仅可达的才自动开独立浮层（避免对死链弹窗）
+        // 自动打开网页：AI 终态含 URL 时，直接把全部提取到的网址派发开窗（与「点击链接」行为一致，不再做可达性探测以免误丢弃合法网址）
         const _urls = extractUrls(result.finalContent);
-        if (_urls.length) {
-          Promise.all(_urls.map((u) => probeUrl(u).then((ok) => (ok ? u : null))))
-            .then((res) => {
-              const reachable = res.filter(Boolean);
-              if (reachable.length) dispatchOpenUrls(reachable, { auto: true });
-            })
-            .catch(() => {});
-        }
+        if (_urls.length) dispatchOpenUrls(_urls, { auto: true });
         // 气泡溯源脚注：把可信度 / 来源 / 时效边界直接挂到回复下方，输出可溯源、可验证
         const fbTarget = (bubble && bubble.el) ? bubble.el : (messagesEl && messagesEl.lastElementChild);
-        attachProvenanceFooter(fbTarget, vReport);
+        const toolReads = extractMemoryToolReads((traceRef.current && traceRef.current.mcp && traceRef.current.mcp.invocations) || []);
+        attachProvenanceFooter(fbTarget, vReport, { recall: built.recall, toolReads });
         // 来源①：AI 终态文本含位置 → 自动地图标注
         // mode: 'strict' 过滤掉 AI 描述型提及（如"陆家嘴三件套"、"东方明珠广播电视塔"作为
         // 知识点描述，不是用户问"地图上的地点"）。这些 POI 名称会让 maps_text_search 在无
@@ -1280,7 +1336,8 @@ export function useChatController() {
         else appendMessage("ai", finalText);
         // 兜底 / 失败路径：明确脚注「无真实依据 / 未溯源」，避免用户误信
         const fbWrap = bubble ? bubble.el : messagesEl.lastElementChild;
-        attachProvenanceFooter(fbWrap, null, { fallback: replyKind === "fallback", error: replyKind === "error" });
+        const toolReads2 = extractMemoryToolReads((traceRef.current && traceRef.current.mcp && traceRef.current.mcp.invocations) || []);
+        attachProvenanceFooter(fbWrap, null, { fallback: replyKind === "fallback", error: replyKind === "error", recall: built.recall, toolReads: toolReads2 });
         // 来源①：AI 错误/兜底文本含位置 → 自动地图标注（同样 strict，挡描述型噪声）
         maybeShowMap(finalText, "ai", { mode: "strict" }).catch(() => {});
         // 出行/规划意图识别（兜底路径同样触发，避免 error 路径把用户卡死）

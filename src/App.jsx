@@ -28,7 +28,7 @@ import { DevOverlay } from "./components/dev/DevOverlay.jsx";
 import { OilPricePanel } from "./components/data/OilPricePanel.jsx";
 import { useOilPrice } from "./lib/oilPrice.js";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
-import { WEBVIEWER_EVENT } from "./lib/webViewer.js";
+import { WEBVIEWER_EVENT, urlKey } from "./lib/webViewer.js";
 import { BOOT_MS, SEQUENCE } from "./lib/bootTimeline.js";
 
 // 入场时序 el → 真实 DOM 选择器（与 bootTimeline.SEQUENCE 一一对应）
@@ -73,6 +73,9 @@ export default function App() {
   const viewerSeq = useRef(0);
   const spawnViewer = (url) => {
     setViewers((prev) => {
+      // 非空的相同网页（按归一化 key 比较）若已存在则跳过，避免重复开窗；
+      // 空 URL（手动“网页”按钮）不做去重，允许开多个空窗分别输入不同网址。
+      if (url && prev.some((v) => v.open && urlKey(v.url) === urlKey(url))) return prev;
       const last = prev.length ? prev[prev.length - 1] : null;
       const base = last ? { x: last.x + 35, y: last.y + 20 } : { x: 410, y: 120 };
       return [
@@ -90,6 +93,11 @@ export default function App() {
   const closeViewer = (id) => {
     setViewers((prev) => prev.map((v) => (v.id === id ? { ...v, open: false } : v)));
     setTimeout(() => setViewers((prev) => prev.filter((v) => v.id !== id)), 360);
+  };
+  // 一键关闭所有网页窗口：先播退出动画，再清空数组卸载
+  const closeAllWeb = () => {
+    setViewers((prev) => prev.map((v) => ({ ...v, open: false })));
+    setTimeout(() => setViewers([]), 360);
   };
 
   useEffect(() => {
@@ -139,16 +147,30 @@ export default function App() {
   };
 
   // 监听网页查看器事件：AI 回复链接 / 自动提取的 URL → 每个网址弹出一个独立窗口，
-  // 多个网址时按 0.5s 间隔依次打开（一个个弹出，而非同时铺开）
+  // 多个网址时按 1s 间隔依次打开（一个个弹出，而非同时铺开）；
+  // 同 key（同页，仅 hash 不同）已开窗口则在该窗口内跳转，避免重复开窗也避免点了没反应。
   useEffect(() => {
     const onOpen = (e) => {
-      const urls = (e.detail && e.detail.urls) || [];
-      if (!urls.length) return;
+      const raw = (e.detail && e.detail.urls) || [];
+      if (!raw.length) return;
+      // 按归一化 key 预去重：同一网站的不同写法（www/尾部斜杠/协议/hash）只保留第一个
+      const seen = new Set();
+      const urls = [];
+      raw.forEach((u) => {
+        const k = urlKey(u);
+        if (k && !seen.has(k)) { seen.add(k); urls.push(u); }
+      });
       urls.forEach((u, i) => {
         setTimeout(() => {
           setViewers((prev) => {
             const out = [...prev].filter((v) => v.open);
-            if (out.some((v) => v.url === u)) return prev;
+            // 同 key 的已开窗口：仅 hash 等细节不同时，在该窗口内跳转而不是再开一个；
+            // 完全相同则静默跳过。
+            const exist = out.find((v) => urlKey(v.url) === urlKey(u));
+            if (exist) {
+              if (exist.url === u) return prev;
+              return prev.map((v) => (v.id === exist.id ? { ...v, url: u } : v));
+            }
             const last = out.length ? out[out.length - 1] : null;
             const base = last ? { x: last.x + 35, y: last.y + 20 } : { x: 410, y: 120 };
             return [...prev, {
@@ -156,7 +178,7 @@ export default function App() {
               url: u, x: base.x, y: base.y, open: true,
             }];
           });
-        }, i * 500);
+        }, i * 1000);
       });
     };
     window.addEventListener(WEBVIEWER_EVENT, onOpen);
@@ -267,6 +289,7 @@ export default function App() {
           if (u && /^https?:\/\//i.test(u.trim())) spawnViewer(u.trim());
         }}
         webOpen={viewers.some((v) => v.open)}
+        onCloseAllWeb={closeAllWeb}
         onOpenSettings={() => setSettingsOpen(true)}
         settingsOpen={settingsOpen}
       />

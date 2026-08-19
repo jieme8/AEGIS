@@ -1,6 +1,74 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 
+// 网页查看器代理：前端 iframe 无法绕过目标站的 X-Frame-Options / CSP frame-ancestors
+// （纯前端无解）。这里在服务端把页面抓回、剥掉帧屏蔽响应头后再喂给 iframe，
+// 让 AI 回复里的网址能真正在应用内渲染（而非空白）。HTML 注入 <base> 让相对链接可解析。
+// 仅用于本地 dev / preview（vite 中间件），生产静态部署无此端点。
+function webProxyPlugin() {
+  const handle = async (req, res, next) => {
+    if (!req.url || !req.url.startsWith("/api/webproxy")) return next();
+    let target = "";
+    try {
+      const u = new URL(req.url, "http://localhost");
+      target = u.searchParams.get("url") || "";
+    } catch {
+      /* ignore */
+    }
+    if (!/^https?:\/\//i.test(target)) {
+      res.statusCode = 400;
+      res.end("invalid url");
+      return;
+    }
+    try {
+      const r = await fetch(target, {
+        method: "GET",
+        redirect: "follow",
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; JARVIS-WebProxy/1.0)" },
+      });
+      const buf = Buffer.from(await r.arrayBuffer());
+      const ct = r.headers.get("content-type") || "application/octet-stream";
+      res.setHeader("Content-Type", ct);
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "no-store");
+      // 关键：不转发 X-Frame-Options / CSP / frame-ancestors，iframe 才能嵌入
+      if (ct.includes("text/html")) {
+        let html = buf.toString("utf8");
+        const baseTag = `<base href="${target}">`;
+        if (/<head[^>]*>/i.test(html)) {
+          html = html.replace(/<head([^>]*)>/i, `<head$1>${baseTag}`);
+        } else if (/<html[^>]*>/i.test(html)) {
+          html = html.replace(/<html([^>]*)>/i, `<html$1><head>${baseTag}</head>`);
+        } else {
+          html = baseTag + html;
+        }
+        // 兜底：清掉内联 CSP meta（frame-ancestors 多在响应头，这里再清内联）
+        html = html.replace(/<meta[^>]+http-equiv=["']?content-security-policy["']?[^>]*>/gi, "");
+        res.end(Buffer.from(html, "utf8"));
+      } else {
+        res.end(buf);
+      }
+    } catch (e) {
+      res.statusCode = 502;
+      res.setHeader("Content-Type", "text/html; charset=utf-8");
+      res.end(
+        `<!doctype html><html><body style="font-family:monospace;background:#0a0e16;color:#9fe;padding:16px">` +
+        `代理获取失败：${String(e.message).replace(/[<>&]/g, "")}<br><br>` +
+        `可点窗口标题栏的 ↗ 在浏览器中打开。</body></html>`
+      );
+    }
+  };
+  return {
+    name: "web-proxy",
+    configureServer(server) {
+      server.middlewares.use(handle);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(handle);
+    },
+  };
+}
+
 // 原地重构：保留原单页形态，仅将实现迁入 React 组件
 export default defineConfig(({ mode }) => {
   // 从 .env 读取密钥（loadEnv 是 vite.config 中读取 .env 的可靠方式；
@@ -114,7 +182,7 @@ export default defineConfig(({ mode }) => {
   };
 
   return {
-    plugins: [react()],
+    plugins: [react(), webProxyPlugin()],
     server: {
       host: true,
       port: 5173,

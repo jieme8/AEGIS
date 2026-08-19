@@ -16,6 +16,24 @@ import { MCPClient } from "./mcpClient.js";
 const LS_KEY = "cyber-recall-v1";
 const mcp = new MCPClient(); // 默认 /api/mcp（同源代理 → Node 侧 Relay）
 
+/** 读取类记忆工具名集合（LLM 在 tool-loop 中自行读取记忆也会用到这些） */
+const MEMORY_READ_TOOLS = new Set(["get_memory", "search_memory", "list_memories"]);
+
+/**
+ * 从 MCP 工具调用记录中提取读取记忆的操作。
+ * @param {Array} invocations trace.mcp.invocations 数组
+ * @returns {Array<{name:string,server:string,args:object,result:any,ts?:number}>}
+ */
+export function extractMemoryToolReads(invocations) {
+  if (!Array.isArray(invocations) || !invocations.length) return [];
+  return invocations.filter(
+    (inv) =>
+      inv &&
+      MEMORY_READ_TOOLS.has(inv.name) &&
+      (!inv.server || inv.server === "memory")
+  );
+}
+
 export function isRecallEnabled() {
   try {
     return localStorage.getItem(LS_KEY) !== "0";
@@ -33,36 +51,45 @@ export function setRecallEnabled(on) {
 }
 
 /**
- * 检索与该用户问题相关的长期记忆，返回可注入 system 提示词的 <memory> 文本段。
+ * 检索与该用户问题相关的长期记忆，返回结构化结果。
  * @param {string} userText 用户本轮消息
  * @param {object} [opts]
  * @param {number} [opts.limit=8] 最多召回条数
- * @returns {Promise<string>} 命中为空或出错时返回 ""
+ * @returns {Promise<{block:string,count:number,entries:Array,query:string,enabled:boolean}>}
+ *   block 为可注入 system 的 <memory> 文本段（无命中/出错时为空串）；
+ *   count 为命中条数；entries 为命中记录数组；query 为原始查询；enabled 为开关状态。
  */
 export async function recallMemories(userText, { limit = 8 } = {}) {
-  if (!isRecallEnabled()) return "";
-  if (!userText || !userText.trim()) return "";
+  const enabled = isRecallEnabled();
+  const query = userText || "";
+  const empty = { block: "", count: 0, entries: [], query, enabled };
+  if (!enabled) return empty;
+  if (!query.trim()) return empty;
   try {
-    const res = await mcp.callTool("search_memory", { query: userText, limit });
-    if (res.isError) return "";
-    const entries =
+    const res = await mcp.callTool("search_memory", { query, limit });
+    if (res.isError) return empty;
+    const raw =
       (res.raw && res.raw.structuredContent && res.raw.structuredContent.entries) || [];
-    const lines = (entries || [])
-      .filter((e) => e && e.key && e.value)
-      .map((e) => `- ${e.key}: ${e.value}`);
+    const entries = (raw || []).filter((e) => e && e.key && e.value);
+    const lines = entries.map((e) => `- ${e.key}: ${e.value}`);
     if (!lines.length) {
-      console.log(`[recall] 无命中 → "${userText.slice(0, 40)}"`);
-      return "";
+      console.log(`[recall] 无命中 → "${query.slice(0, 40)}"`);
+      return empty;
     }
-    console.log(`[recall] 命中 ${lines.length} 条 → "${userText.slice(0, 40)}"`);
+    console.log(`[recall] 命中 ${entries.length} 条 → "${query.slice(0, 40)}"`);
     console.log(`[recall] 召回内容:\n${lines.join("\n")}`);
-    return (
-      "<memory>\n" +
-      "以下是已知的、与该用户相关的长期记忆（跨会话保留），回答时请优先参考：\n" +
-      lines.join("\n") +
-      "\n</memory>"
-    );
+    return {
+      block:
+        "<memory>\n" +
+        "以下是已知的、与该用户相关的长期记忆（跨会话保留），回答时请优先参考：\n" +
+        lines.join("\n") +
+        "\n</memory>",
+      count: entries.length,
+      entries,
+      query,
+      enabled,
+    };
   } catch (e) {
-    return "";
+    return empty;
   }
 }

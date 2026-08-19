@@ -15,6 +15,11 @@ function hostOf(u) {
   }
 }
 
+// 通过 vite 同源代理加载，绕过目标站的 X-Frame-Options / CSP frame-ancestors 限制
+function proxied(u) {
+  return "/api/webproxy?url=" + encodeURIComponent(u);
+}
+
 export function WebViewerWindow({ devId, url, open, onClose, pos }) {
   const [booting, setBooting] = useState(false);
 
@@ -50,7 +55,7 @@ export function WebViewerWindow({ devId, url, open, onClose, pos }) {
             id="wv-frame"
             key={url}
             className="wv-frame"
-            src={url}
+            src={proxied(url)}
             title={url}
             referrerPolicy="no-referrer"
           />

@@ -1280,6 +1280,8 @@
     margin-left: 2px; letter-spacing: 0;
   }
   .tb-btn.active .tb-idx { color: rgba(4,6,12,0.6); }
+  /* 网页「全关」按钮：破坏性操作，悬停转红提示 */
+  .tb-btn.danger:hover { background: rgba(255,80,80,0.18); border-color: rgba(255,80,80,0.55); color: #ff9a9a; }
 
   /* 形态切换按钮仅在编辑模式下可见 */
   .form-switch { display: none; }
@@ -1648,6 +1650,13 @@
   .trace-sum-label { flex: 0 0 auto; color: var(--dim); font-size: 9px; }
   .trace-sum-val { flex: 1 1 auto; color: var(--txt); opacity: .85; word-break: break-all; line-height: 1.35; }
   .trace-sum-val.err { color: #ff7b7b; }
+
+  /* 记忆召回浮层 · 查询问题行 */
+  .trace-memory-query {
+    display: flex; gap: 6px; align-items: baseline; padding: 4px 8px 6px;
+    border-bottom: 1px solid rgba(0,240,255,0.1); margin-bottom: 4px;
+  }
+  .trace-memory-q { color: var(--txt); opacity: .9; font-size: 10.5px; word-break: break-all; line-height: 1.4; }
 
   /* ===================== MCP 服务器列表浮层 · HUD 科技风 ===================== */
   .mcp-panel {
@@ -2356,7 +2365,7 @@
   /* —— 独立地图窗口（Portal 浮层，与 ImageWindow 同款拖拽/缩放） —— */
   .map-window {
     position: fixed; left: 130px; top: 330px; right: auto; bottom: auto;
-    width: 420px; height: 500px;
+    width: 400px; height: 400px;
     z-index: 70; display: flex; flex-direction: column;
     background: rgba(6,10,18,0.7);
     border: 1px solid rgba(0,240,255,0.42);
@@ -2969,5 +2978,29 @@
   }
   .chat-source-footer .src-link:hover { opacity: 1; box-shadow: 0 0 8px currentColor; }
   .chat-source-footer .src-note { color: var(--dim); font-style: italic; margin-top: 1px; }
+
+  /* 来源脚注 · 记忆召回行 */
+  .chat-source-footer .src-memory {
+    display: flex; flex-direction: column; gap: 4px;
+    padding-top: 4px; border-top: 1px dashed rgba(0,240,255,0.14);
+  }
+  .chat-source-footer .src-memory-label {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3px; color: #ffcf4d;
+    text-shadow: 0 0 8px rgba(255,207,77,0.35);
+  }
+  .chat-source-footer .src-memory.muted .src-memory-label { color: var(--dim); text-shadow: none; font-weight: 600; }
+  .chat-source-footer .src-memory-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  .chat-source-footer .src-memory-chip {
+    font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 8px;
+    color: var(--cyan); background: rgba(0,240,255,0.08);
+    border: 1px solid rgba(0,240,255,0.25); cursor: default;
+    max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .chat-source-footer .src-memory-chip:hover { box-shadow: 0 0 8px rgba(0,240,255,0.4); }
+  .chat-source-footer .src-memory-chip.tool {
+    color: #ffcf4d; background: rgba(255,207,77,0.08);
+    border-color: rgba(255,207,77,0.3);
+  }
+  .chat-source-footer .src-memory-chip.tool:hover { box-shadow: 0 0 8px rgba(255,207,77,0.35); }
 
 
