@@ -1461,15 +1461,23 @@
 
   .trace-section { border: 1px solid rgba(0,240,255,0.18); border-radius: 8px; background: rgba(8,14,26,0.5); overflow: hidden; }
   .trace-section > summary {
-    list-style: none; cursor: pointer; user-select: none;
+    list-style: none; cursor: pointer; user-select: none; position: relative; overflow: hidden;
     display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; padding: 7px 10px;
     font-size: 11.5px; letter-spacing: .3px; color: var(--txt); background: rgba(0,240,255,0.04);
-    overflow: hidden;
   }
   .trace-section > summary::-webkit-details-marker { display: none; }
   .trace-section > summary::before { content: "▸"; color: var(--cyan); transition: transform .15s; font-size: 10px; }
   .trace-section[open] > summary::before { transform: rotate(90deg); }
   .trace-section > summary:hover { background: rgba(0,240,255,0.10); }
+  /* 合并窗分区流光：仅该分区内容更新（.alive）时出现呼吸辉光 + 顶部流光，
+     复用整窗标题栏的关键帧，保留「哪块在动哪块亮」的语义。 */
+  .trace-section > summary.alive { animation: float-head-alive 3.4s ease-in-out infinite; }
+  .trace-section > summary.alive::after {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(0,240,255,0.95), transparent);
+    background-size: 42% 100%; background-repeat: no-repeat;
+    animation: float-head-sweep 2.6s ease-in-out infinite;
+  }
   .sec-idx {
     font-family: var(--mono); font-size: 9px; color: var(--bg); background: var(--cyan);
     padding: 1px 5px; border-radius: 3px; letter-spacing: 1px; box-shadow: 0 0 8px rgba(0,240,255,0.5);
@@ -2364,8 +2372,8 @@
 
   /* —— 独立地图窗口（Portal 浮层，与 ImageWindow 同款拖拽/缩放） —— */
   .map-window {
-    position: fixed; left: 130px; top: 330px; right: auto; bottom: auto;
-    width: 400px; height: 400px;
+    position: fixed; left: 140px; top: 460px; right: auto; bottom: auto;
+    width: 350px; height: 300px;
     z-index: 70; display: flex; flex-direction: column;
     background: rgba(6,10,18,0.7);
     border: 1px solid rgba(0,240,255,0.42);

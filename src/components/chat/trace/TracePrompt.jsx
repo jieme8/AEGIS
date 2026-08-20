@@ -58,7 +58,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-prompt"
       title="对话流-提示词"
-      defaultPos={{ x: 970, y: 340 }}
+      defaultPos={{ x: 970, y: 360 }}
       width={320}
       open={open}
       onClose={onClose}
