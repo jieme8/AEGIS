@@ -13,8 +13,8 @@
     "movie-search": "node server/movie-search.mjs",
     "movie-meta": "node server/movie-meta.mjs",
     "oil": "node server/oilApi.mjs",
-    "dev:all": "concurrently -n vite,relay,genimg,movie -c cyan,magenta,yellow,green \"vite\" \"node server/mcp-relay.mjs\" \"node server/image-proxy.mjs\" \"node server/movie-search.mjs\"",
-    "test": "node scripts/verify-engine.cjs && node --test tests/sse.test.mjs tests/toolCalls.test.mjs tests/mcp.test.mjs",
+    "dev:all": "concurrently -n vite,relay,genimg,movie,oil -c cyan,magenta,yellow,green,blue \"vite\" \"node server/mcp-relay.mjs\" \"node server/image-proxy.mjs\" \"node server/movie-search.mjs\" \"node server/oilApi.mjs\"",
+    "test": "node scripts/verify-engine.cjs && node --test tests/sse.test.mjs tests/toolCalls.test.mjs tests/mcp.test.mjs tests/answerVerifier.test.mjs",
     "test:sse": "node --test tests/sse.test.mjs",
     "verify": "node scripts/verify-engine.cjs && node scripts/clscheck.mjs"
   },

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { LoadingDots, useContentPulse, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
+import { isCompactViewport } from "../../../lib/viewport.js";
 
 /**
  * 04 · 思考过程（独立桌面浮层）
@@ -27,7 +28,7 @@ export function TraceReasoning({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-reasoning"
       title="对话流-思考过程"
-      defaultPos={{ x: 970, y: 80 }}
+      defaultPos={isCompactViewport() ? { x: 660, y: 80 } : { x: 970, y: 80 }}
       width={320}
       open={open}
       onClose={onClose}

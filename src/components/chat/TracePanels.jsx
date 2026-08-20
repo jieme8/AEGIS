@@ -1,3 +1,4 @@
+import { isCompactViewport } from "../../lib/viewport.js";
 import { TraceRequestStatus } from "./trace/TraceRequestStatus.jsx";
 import { TracePrompt } from "./trace/TracePrompt.jsx";
 import { TraceReasoning } from "./trace/TraceReasoning.jsx";
@@ -17,13 +18,15 @@ import { TraceMemory } from "./trace/TraceMemory.jsx";
  * 注：07 · 记忆召回（Memory）浮层显示本轮检索到的长期记忆，与 MCP 工具浮层同级。
  */
 export function TracePanels({ trace, open, onClose }) {
+  // 首次打开视口 ≤1600：默认隐藏请求状态 / 工具调用两个浮层（小屏防遮挡）
+  const compact = isCompactViewport();
   return (
     <>
-      <TraceRequestStatus trace={trace} open={open} onClose={onClose} index={0} total={5} />
+      <TraceRequestStatus trace={trace} open={open && !compact} onClose={onClose} index={0} total={5} />
       <TracePrompt trace={trace} open={open} onClose={onClose} index={1} total={5} />
       <TraceReasoning trace={trace} open={open} onClose={onClose} index={2} total={5} />
-      <TraceMcpTools trace={trace} open={open} onClose={onClose} index={3} total={5} />
-      <TraceMemory trace={trace} open={open} onClose={onClose} index={4} total={5} />
+      <TraceMcpTools trace={trace} open={open && !compact} onClose={onClose} index={3} total={5} />
+      <TraceMemory trace={trace} open={open && !compact} onClose={onClose} index={4} total={5} />
     </>
   );
 }

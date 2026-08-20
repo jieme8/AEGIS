@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { CopyButton, useContentPulse, useTypewriter, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 import { sanitizeImageRefs } from "../../../lib/traceSanitize.js";
+import { isCompactViewport } from "../../../lib/viewport.js";
 
 /**
  * 03 · 提示词（独立桌面浮层）
@@ -58,7 +59,7 @@ export function TracePrompt({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-prompt"
       title="对话流-提示词"
-      defaultPos={{ x: 970, y: 340 }}
+      defaultPos={isCompactViewport() ? { x: 660, y: 360 } : { x: 970, y: 340 }}
       width={320}
       open={open}
       onClose={onClose}

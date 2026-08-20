@@ -2,6 +2,7 @@ import { useState } from "react";
 import { CopyButton, TraceIdle } from "./shared.jsx";
 import { FloatingPanel } from "../../common/FloatingPanel.jsx";
 import { extractMemoryToolReads } from "../../../lib/recall.js";
+import { isCompactViewport } from "../../../lib/viewport.js";
 
 /**
  * 07 · 记忆召回（独立桌面浮层）
@@ -59,7 +60,7 @@ export function TraceMemory({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-memory"
       title="对话流-记忆召回"
-      defaultPos={{ x: 640, y: 510 }}
+      defaultPos={isCompactViewport() ? { x: 330, y: 510 } : { x: 640, y: 510 }}
       width={320}
       height={260}
       open={open}

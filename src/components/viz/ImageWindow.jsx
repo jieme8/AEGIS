@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { imageProviderManager } from "../../lib/imageProviderManager.js";
+import { isCompactViewport } from "../../lib/viewport.js";
 
 // 独立「AI 配图窗口」：经 Portal 挂到 body，不受聊天面板限制，可在整页任意拖动。
 // 与主对话解耦 —— 生图结果不再写进 chat-panel，而是由 imagePipeline 通过事件推流进来：
@@ -251,7 +252,7 @@ export function ImageWindow({ open, onClose }) {
   return createPortal(
     <div
       ref={boxRef}
-      className={"image-window" + (dragging ? " dragging" : "") + (resizing ? " resizing" : "")}
+      className={"image-window" + (isCompactViewport() ? " compact" : "") + (dragging ? " dragging" : "") + (resizing ? " resizing" : "")}
       role="dialog"
       aria-label="AI 配图窗口"
       data-dev-id="image-window"

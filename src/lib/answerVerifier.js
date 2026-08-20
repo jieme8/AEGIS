@@ -16,6 +16,10 @@
 export const KNOWLEDGE_BOUNDARY =
   "模型训练知识有截止日期，无法获取实时数据（行情 / 天气 / 突发新闻等），涉及最新事实请以权威来源为准。";
 
+// —— 时效敏感问题特征（命中即有「数据可能过期」风险，需强制溯源判定）——
+export const TIME_SENSITIVE_RE =
+  /最新|实时|现在|当前|今年|本年度|最近|刚刚|今日|今天|本周|本月|202[4-9]年|20\d{2}(年)?度|上调|下调|调整|发布|公布|公布.*(数据|工资|标准)|生效|截止|社平|平均工资|基数/;
+
 // —— 可信度分级（来源域名 → 等级）——
 export const TRUST = {
   official:      { key: "official",      label: "官方 / 权威机构", short: "权威", cls: "t-official" },
@@ -63,11 +67,11 @@ const UNCERTAIN_STRONG = [
 
 // —— 高利害断言特征（命中需附来源）——
 const HS_NUMBER =
-  /\d+(\.\d+)?\s?(%|％|亿元|万元|亿|万|公里|千米|米|厘米|吨|千克|公斤|平方|立方|倍|个|人|次|条|项|GHz|MHz|Hz|GB|MB|TB|kg|km|cm|mm|°C|摄氏度|美元|元|欧元|英镑)/;
+  /\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(%|％|亿元|万元|亿|万|公里|千米|米|厘米|吨|千克|公斤|平方|立方|倍|个|人|次|条|项|GHz|MHz|Hz|GB|MB|TB|kg|km|cm|mm|°C|摄氏度|美元|元|欧元|英镑)/;
 const HS_YEAR = /(?:19|20)\d{2}\s?年|(?:19|20)\d{2}(?=[-/年])/;
 const HS_QUOTE = /[“"”'‘’「」]/;
 const HS_PHRASE =
-  /(根据|据|研究显示|据统计|数据表明|报告称|官方|政府|法律|法规|条例|标准|协议|同比增长|环比|占比|预计|截止|截至|援引|证实|宣布|发布|披露|修订)/;
+  /(根据|据|研究显示|据统计|数据表明|报告称|官方|政府|法律|法规|条例|标准|协议|同比|环比|上涨|下降|下调|增长|提升|预计|截止|截至|援引|证实|宣布|发布|披露|修订)/;
 
 // —— URL 抽取（同时处理裸链接与 Markdown [文本](url)）——
 function extractUrls(text) {
@@ -123,10 +127,14 @@ function isHighStakes(s) {
  * @param {string} p.text         AI 回复全文
  * @param {string} [p.model]      模型标识
  * @param {number} [p.sentAt]     请求发送时间戳
+ * @param {string} [p.query]      用户原始问题（用于时效敏感判定）
+ * @param {boolean} [p.timeSensitive] 上游已标记的时效敏感问题
  * @returns {Object} 校验报告
  */
-export function verifyAnswer({ text, model, sentAt }) {
+export function verifyAnswer({ text, model, sentAt, query, timeSensitive }) {
   const content = String(text || "");
+  // 时效敏感判定：上游显式标记优先，否则按问题文本特征兜底
+  const timeSensitiveFlag = !!timeSensitive || TIME_SENSITIVE_RE.test(String(query || ""));
   const urls = extractUrls(content).map((o) => {
     let host = "";
     try { host = new URL(o.url).hostname; } catch (e) { /* 非法 URL */ }
@@ -162,6 +170,8 @@ export function verifyAnswer({ text, model, sentAt }) {
       const coverage = cited / required;
       score -= Math.round((1 - coverage) * 30); // 未溯源的高利害断言扣分
     }
+    // 时效敏感问题兜底：数值断言却一个真实来源都没有 → 大额扣分（数据可能过期 / 幻觉）
+    if (timeSensitiveFlag && required > 0 && urls.length === 0) score -= 25;
   }
   score = Math.max(5, Math.min(100, score));
 
@@ -172,6 +182,10 @@ export function verifyAnswer({ text, model, sentAt }) {
   else if (score >= 75) level = "high";
   else if (score >= 50) level = "medium";
   else level = "low";
+  // 时效敏感问题 + 数值断言 + 无任何来源链接 → 强制降到最低置信等级（数据可能过期 / 虚构）
+  if (timeSensitiveFlag && !fictionalLabel && required > 0 && urls.length === 0) {
+    level = "low";
+  }
 
   // —— 警告 ——
   const warnings = [];
@@ -182,6 +196,11 @@ export function verifyAnswer({ text, model, sentAt }) {
   }
   if (!fictionalLabel && required === 0 && urls.length === 0 && !hasUncertainty && content.length > 40) {
     warnings.push("纯陈述性回复未提供任何来源、亦未声明不确定性；如涉及具体事实，请补充依据或明确知识边界。");
+  }
+  if (timeSensitiveFlag && !fictionalLabel && required > 0 && urls.length === 0) {
+    warnings.push(
+      "⚠️ 时效数据风险：该问题涉及最新/当前信息，但回复中的具体数值未附任何可点击来源，疑似基于训练记忆的旧值或幻觉，请以官方最新发布为准。"
+    );
   }
   if (urls.some((u) => u.trust.key === "unknown")) {
     warnings.push("存在无法判定可信度的来源，请自行甄别。");
@@ -194,6 +213,7 @@ export function verifyAnswer({ text, model, sentAt }) {
     model: model || "—",
     sentAt: sentAt || null,
     knowledgeBoundary: KNOWLEDGE_BOUNDARY,
+    timeSensitive: timeSensitiveFlag,
     sources: urls,
     sourceCount: urls.length,
     hasUncertainty,

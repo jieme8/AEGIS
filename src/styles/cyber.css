@@ -149,7 +149,7 @@
     top: 58px;
     width: min(620px, 94vw);
     height: calc(100vh - 154px);              /* = 58(top) + 96(bottom) */
-    z-index: 11;                              /* 最高视觉优先级 */
+    z-index: 71;                              /* 最高视觉优先级 */
     display: flex; flex-direction: column;
     background: rgba(6,10,18,0.85);            /* 略加深保证半透明下内容清晰可读 */
     border: 1px solid rgba(0,240,255,0.40);
@@ -477,6 +477,8 @@
   }
   .image-window.dragging { opacity: .96; }
   .image-window.resizing { cursor: ns-resize; }
+  /* 首次打开视口 ≤1600 的紧凑布局：配图窗口默认挪到左侧（与 trace 浮层同列） */
+  .image-window.compact { left: 330px; top: 80px; }
   /* 底部 resize 拖拽手柄 */
   .iw-resize {
     flex: 0 0 auto; height: 6px; cursor: ns-resize;
@@ -2978,6 +2980,15 @@
   }
   .chat-source-footer .src-link:hover { opacity: 1; box-shadow: 0 0 8px currentColor; }
   .chat-source-footer .src-note { color: var(--dim); font-style: italic; margin-top: 1px; }
+
+  /* 来源脚注 · 校验警告清单（时效过期风险醒目显示） */
+  .chat-source-footer .src-warnings {
+    margin: 4px 0 0; padding: 0 0 0 14px;
+    color: #ffb3c1; font-size: 10.5px; line-height: 1.5;
+  }
+  .chat-source-footer .src-warnings li { margin-top: 2px; }
+  .chat-source-footer .src-warnings li:first-child { margin-top: 0; }
+  .chat-source-footer .src-warnings li:hover { color: #ff5c74; }
 
   /* 来源脚注 · 记忆召回行 */
   .chat-source-footer .src-memory {

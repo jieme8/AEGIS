@@ -22,7 +22,7 @@ import {
 // 影视「影片发现」渲染（元数据卡片，加法接入 @影视搜索 窗口顶部）
 import { populateDiscovery } from "../lib/movieDiscovery.js";
 // 内容生成后校验引擎：溯源 / 可信度分级，落实「事实准确性为最高优先级」
-import { verifyAnswer, extractLiveSources, LEVEL_META } from "../lib/answerVerifier.js";
+import { verifyAnswer, extractLiveSources, LEVEL_META, TIME_SENSITIVE_RE } from "../lib/answerVerifier.js";
 // 网页查看器：AI 回复链接在独立浮层打开（自动提取全部网址开窗）
 import { dispatchOpenUrls, extractUrls } from "../lib/webViewer.js";
 
@@ -38,9 +38,12 @@ const FACTUALITY_DIRECTIVES =
   "3. 在回复末尾用独立一段列出「来源」清单：逐条给出完整 URL，并简要说明可信度（官方 / 权威媒体 / 一般媒体 / 未知）。" +
   "如果正文已内联全部 URL，可省略重复项，但仍需保留「来源：见正文链接」说明。\n" +
   "4. 当内容属于创意 / 虚构 / 假设性创作时，必须在开头显式标注「以下为虚构创作」，避免与事实混淆。\n" +
-  "5. 知识有时效边界：你的训练知识有截止日期，无法获取实时数据（股价、天气、突发新闻等）。" +
-  "涉及最新动态时，应主动声明局限并建议用户查阅权威来源核实。\n" +
-  "6. 所有表述须有据可依；无法溯源的断言应降级为「可能 / 待核实」或明确标注不确定性。";
+  "5. 【时效数据 · 必须先搜索再回答】：你的训练知识有截止日期。凡涉及实时动态、最新数据、行情、" +
+  "政策标准，或用户要求「最新 / 现在 / 当前 / 今年 / 最近」等时效信息时，你必须先调用可用的联网搜索工具" +
+  "（tavily_search / fetch 等）检索权威来源作为回答依据，禁止凭训练记忆报出最新数值——那会给出过期或虚构的数据。\n" +
+  "6. 【搜索不可用时的降级】：若搜索工具不可用或检索失败，必须先明确声明「无法获取实时 / 最新数据」；" +
+  "确实要给数值时须标注「以下为训练知识中的历史数据（截至我的训练截止日），并非当前最新发布值，请以官方为准」。\n" +
+  "7. 所有表述须有据可依；无法溯源的断言应降级为「可能 / 待核实」或明确标注不确定性。";
 // 对话位置自动地图标注 → 独立 MapWindow 浮窗（事件驱动）
 import { extractLocations, extractLocationsStrict, KNOWN_CITY } from "../lib/locationExtractor.js";
 import { parseGeoMarker, parseRoute, parseTextSearch, parseSearchDetail, validateAgainstCity, guessContextCity } from "../lib/mapParse.js";
@@ -270,6 +273,18 @@ function attachProvenanceFooter(wrap, report, opts = {}) {
       : "模型知识有时效边界，关键事实请以权威来源为准。" + (report.hasUncertainty ? " 已声明不确定性。" : "");
   }
   footer.appendChild(note);
+
+  // 校验警告清单：把时效过期风险等提示直接挂在脚注里，让「数据可能过时」一眼可见
+  if (report && Array.isArray(report.warnings) && report.warnings.length) {
+    const wList = document.createElement("ul");
+    wList.className = "src-warnings";
+    report.warnings.forEach((w) => {
+      const li = document.createElement("li");
+      li.textContent = w;
+      wList.appendChild(li);
+    });
+    footer.appendChild(wList);
+  }
 
   wrap.appendChild(footer);
   // 关键修复：脚注在 finalize() 的自动滚动之后才挂载，必须主动滚入可视区，
@@ -961,16 +976,32 @@ export function useChatController() {
     // 注意：chat-panel 并非频谱数据智能体，故 system 提示词不含任何实时音频/
     // 频谱描述，仅保留通用 AI 助手身份与语气约束。
     async function buildMessages(userText) {
+      // 注入当前日期：让模型明确感知「训练知识 vs 当下」的时效断层，
+      // 它是能否正确判断「该不该搜」的关键上下文。
+      const now = new Date();
+      const dateLine =
+        "当前日期：" + now.getFullYear() + " 年 " + (now.getMonth() + 1) + " 月 " + now.getDate() +
+        " 日（周" + "日一二三四五六".charAt(now.getDay()) + "）。" +
+        "你的训练知识有截止日期，任何晚于其发布的新数据都无法凭记忆得知，必须联网检索确认。\n";
       const base =
         "你是集成在一个赛博朋克风格界面中的 AI 助手「J.A.R.V.I.S.」。" +
-        "请用简体中文回答，语气带科技感，简洁清晰、切中要点。" +
+        "请用简体中文回答，语气带科技感，简洁清晰、切中要点。\n" +
+        dateLine +
         FACTUALITY_DIRECTIVES;
       let content = base;
       // 主动召回：把和用户当前问题相关的长期记忆注入 system，使助手自带上下文
       let recall = { block: "", count: 0, entries: [], query: userText || "", enabled: true };
+      // 时效敏感问题检测：命中 → 强制「先搜索再回答」，并开启校验器的「过期风险」判定
+      const timeSensitive = TIME_SENSITIVE_RE.test(userText || "");
+      if (timeSensitive) {
+        content +=
+          "\n\n【本轮为时效敏感问题】用户在询问「最新 / 当前」的信息。" +
+          "在给出任何具体数值之前，你必须先调用联网搜索工具（tavily_search 等）检索权威来源；" +
+          "若搜索不可用，必须明确声明该值为历史数据而非最新，不得冒充当前值。";
+      }
       try {
         recall = await recallMemories(userText || "");
-        if (recall && recall.block) content = base + "\n\n" + recall.block;
+        if (recall && recall.block) content = content + "\n\n" + recall.block;
       } catch (e) {
         /* 召回失败不影响主流程，退化为无记忆版本 */
       }
@@ -980,7 +1011,7 @@ export function useChatController() {
         content: m.text,
       }));
       const messages = [systemMsg, ...historyMsgs];
-      return { systemMsg, historyMsgs, messages, recall };
+      return { systemMsg, historyMsgs, messages, recall, timeSensitive };
     }
 
     // ---------- 真实大模型流式调用（LongCat · OpenAI 兼容 SSE） ----------
@@ -1262,6 +1293,8 @@ export function useChatController() {
           text: result.finalContent,
           model: (activeProfile || {}).model,
           sentAt: traceInit.sentAt,
+          query: raw,
+          timeSensitive: built.timeSensitive,
         });
         if (bubble) bubble.finalize(result.finalContent);
         // 自动打开网页：AI 终态含 URL 时，直接把全部提取到的网址派发开窗（与「点击链接」行为一致，不再做可达性探测以免误丢弃合法网址）
