@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 {
   "name": "cyber-audio-visualizer",
   "private": true,
@@ -31,3 +32,38 @@
     "vite": "^5.4.10"
   }
 }
+=======
+{
+  "name": "cyber-audio-visualizer",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n vite,relay,movie,meta,oil -c cyan,magenta,green,yellow,blue \"vite\" \"node server/mcp-relay.mjs\" \"node server/movie-search.mjs\" \"node server/movie-meta.mjs\" \"node server/oilApi.mjs\"",
+    "prebuild": "node scripts/clean-dist.cjs",
+    "build": "vite build",
+    "preview": "concurrently -n preview,oil -c cyan,blue \"vite preview\" \"node server/oilApi.mjs\"",
+    "mcp-relay": "node server/mcp-relay.mjs",
+    "genimg": "node server/image-proxy.mjs",
+    "movie-search": "node server/movie-search.mjs",
+    "movie-meta": "node server/movie-meta.mjs",
+    "oil": "node server/oilApi.mjs",
+    "dev:all": "concurrently -n vite,relay,genimg,movie,oil -c cyan,magenta,yellow,green,blue \"vite\" \"node server/mcp-relay.mjs\" \"node server/image-proxy.mjs\" \"node server/movie-search.mjs\" \"node server/oilApi.mjs\"",
+    "test": "node scripts/verify-engine.cjs && node --test tests/sse.test.mjs tests/toolCalls.test.mjs tests/mcp.test.mjs tests/answerVerifier.test.mjs",
+    "test:sse": "node --test tests/sse.test.mjs",
+    "verify": "node scripts/verify-engine.cjs && node scripts/clscheck.mjs"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "^5.2.5",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "concurrently": "^10.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "tavily-mcp": "^0.2.22",
+    "vite": "^5.4.10"
+  }
+}
+>>>>>>> 662abb8254c81792abf86b2cccf3c4eb284584e7
