@@ -24,15 +24,13 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { log } from "./lib/dev-log.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const CONFIG_PATH = path.resolve(ROOT, "mcp.config.json");
 
-const log = (...a) => console.log("[mcp-relay]", ...a);
-const warn = (...a) => console.warn("[mcp-relay]", ...a);
 
-// 极简 .env 载入：把项目根 .env 的键值写入 process.env（仅当该键尚未存在），
 // 以便把 TAVILY_API_KEY 等密钥注入给 stdio 子进程（MCP 服务器通常读环境变量取密钥）。
 function loadDotEnv() {
   const envPath = path.resolve(ROOT, ".env");
@@ -52,15 +50,15 @@ function loadDotEnv() {
       }
       if (process.env[k] === undefined) process.env[k] = v;
     }
-    log("已从 .env 载入环境变量（供 MCP 子进程取密钥）");
+    log.info("已从 .env 载入环境变量");
   } catch (e) {
-    warn("读取 .env 失败：", e.message);
+    log.log.warn("读取 .env 失败：", e.message);
   }
 }
 
 function loadConfig() {
   if (!fs.existsSync(CONFIG_PATH)) {
-    warn("未找到 mcp.config.json，使用默认空配置（仅 relay 启动，无服务器）。");
+    log.log.warn("未找到 mcp.config.json，使用默认空配置（仅 relay 启动，无服务器）。");
     return { relayPort: 8787, servers: [] };
   }
   try {
@@ -69,7 +67,7 @@ function loadConfig() {
     cfg.servers = Array.isArray(cfg.servers) ? cfg.servers : [];
     return cfg;
   } catch (e) {
-    warn("mcp.config.json 解析失败：", e.message);
+    log.log.warn("mcp.config.json 解析失败：", e.message);
     return { relayPort: 8787, servers: [] };
   }
 }
@@ -100,7 +98,7 @@ async function connectServer(spec) {
     inputSchema: t.inputSchema || { type: "object", properties: {} },
     server: spec.name,
   }));
-  log(`已连接服务器 "${spec.name}"：${norm.length} 个工具`);
+  log.ok(`已连接 ${spec.name}（${norm.length} 个工具）`);
   return { name: spec.name, client, tools: norm, toolCallTimeoutMs: spec.toolCallTimeoutMs || 60000 };
 }
 
@@ -127,7 +125,7 @@ async function initServers(config) {
     if (!spec.enabled) {
       base.status = "disabled";
       SERVER_STATES.push(base);
-      log(`跳过未启用服务器 "${spec.name}"`);
+      log.info(`跳过未启用的 ${spec.name}`);
       continue;
     }
     try {
@@ -149,7 +147,7 @@ async function initServers(config) {
       base.status = "error";
       base.error = e.message;
       SERVER_STATES.push(base);
-      warn(`连接服务器 "${spec.name}" 失败，已跳过：`, e.message);
+      log.error(`连接 ${spec.name} 失败，已跳过：${e.message}`);
     }
   }
 }
@@ -263,7 +261,7 @@ async function callSearchSource(server, name, args) {
     if (r && r.isError) return "";
     return contentToString(r ? r.content : null);
   } catch (e) {
-    warn(`聚合搜索：来源 "${server.name}" 调用失败（降级）：`, e.message);
+    log.warn(`聚合搜索：来源 "${server.name}" 调用失败（降级）：`, e.message);
     return "";
   }
 }
@@ -455,7 +453,7 @@ async function handleCall(req, res) {
         structuredContent: agg.metadata || null,
       });
     } catch (e) {
-      warn(`聚合搜索 "${name}" 失败：`, e.message);
+      log.warn(`聚合搜索 "${name}" 失败：`, e.message);
       return sendJSON(res, 502, { error: "聚合搜索失败：" + e.message });
     }
   }
@@ -467,7 +465,7 @@ async function handleCall(req, res) {
     });
   }
   try {
-    if (server.name === "memory") log(`⇢ ${name} @ memory`);
+    if (server.name === "memory") log.info(`⇢ ${name} @ memory`);
     const result = await server.client.callTool(
       { name, arguments: args },
       undefined,
@@ -479,7 +477,7 @@ async function handleCall(req, res) {
       structuredContent: result.structuredContent || null,
     });
   } catch (e) {
-    warn(`执行工具 "${name}" 失败：`, e.message);
+    log.warn(`执行工具 "${name}" 失败：`, e.message);
     sendJSON(res, 502, { error: "工具执行失败：" + e.message });
   }
 }
@@ -500,7 +498,7 @@ function createServer() {
       if (req.method === "GET" && p === "/api/mcp/status") return await handleStatus(res);
       sendJSON(res, 404, { error: "未找到接口：" + p });
     } catch (e) {
-      warn("请求处理异常：", e.message);
+      log.warn("请求处理异常：", e.message);
       sendJSON(res, 500, { error: e.message });
     }
   });
@@ -509,19 +507,19 @@ function createServer() {
 async function main() {
   loadDotEnv();
   const config = loadConfig();
-  log("加载配置：", config.servers.length, "个服务器声明，relay 端口", config.relayPort);
-  await initServers(config);
-  const toolCount = SERVERS.reduce((n, s) => n + s.tools.length, 0);
-  log("已连接", SERVERS.length, "个 MCP 服务器，共", toolCount, "个工具");
+  log.info(`配置加载完成：${config.servers.length} 个服务器声明`);
 
   const server = createServer();
   server.listen(config.relayPort, () => {
-    log("Relay 已启动： http://localhost:" + config.relayPort);
-    log("浏览器经 Vite 同源代理 /api/mcp 访问；本进程持有所有 MCP 连接与凭据。");
+    log.ready(`http://localhost:${config.relayPort}`);
   });
 
+  await initServers(config);
+  const toolCount = SERVERS.reduce((n, s) => n + s.tools.length, 0);
+  log.ok(`全部就绪：${SERVERS.length} 个服务器，共 ${toolCount} 个工具`);
+
   const shutdown = () => {
-    log("正在关闭…");
+    log.info("正在关闭…");
     server.close(() => process.exit(0));
     setTimeout(() => process.exit(0), 2000).unref();
   };

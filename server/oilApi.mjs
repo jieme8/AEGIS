@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { log } from "./lib/dev-log.mjs";
 /**
  * 油价同源代理 · J.A.R.V.I.S. Cyber Audio Spectrum
  *
@@ -15,8 +16,6 @@ import http from "node:http";
 import { getOilPrice } from "./oilPrice.mjs";
 
 const PORT = Number(process.env.OIL_PORT) || 8795;
-const log = (...a) => console.log("[oil-api]", ...a);
-const warn = (...a) => console.warn("[oil-api]", ...a);
 
 function sendJSON(res, status, obj) {
   const body = JSON.stringify(obj);
@@ -29,7 +28,7 @@ async function handleOil(_req, res) {
     const data = await getOilPrice();
     sendJSON(res, 200, data);
   } catch (e) {
-    warn("抓取油价失败：", e.message);
+    log.warn("抓取油价失败：", e.message);
     sendJSON(res, 502, { ok: false, error: e.message || String(e) });
   }
 }
@@ -46,7 +45,7 @@ function createServer() {
       }
       sendJSON(res, 404, { error: "未找到接口：" + url.pathname });
     } catch (e) {
-      warn("请求处理异常：", e.message);
+      log.warn("请求处理异常：", e.message);
       sendJSON(res, 500, { error: e.message });
     }
   });
@@ -54,12 +53,11 @@ function createServer() {
 
 const server = createServer();
 server.listen(PORT, () => {
-  log("油价代理已启动： http://localhost:" + PORT);
-  log("浏览器经 Vite 同源代理 /api/oil 访问；本进程执行真实油价抓取 + 解析。");
+  log.ready(`http://localhost:${PORT}`);
 });
 
 const shutdown = () => {
-  log("正在关闭…");
+  log.info("正在关闭…");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 };

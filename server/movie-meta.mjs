@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { log } from "./lib/dev-log.mjs";
 /**
  * 影视元数据检索服务 · J.A.R.V.I.S. Cyber Audio Spectrum
  *
@@ -33,17 +34,14 @@ const PORT = Number(process.env.MOVIE_META_PORT) || 8790;
 const TMDB_KEY = process.env.TMDB_API_KEY || "";
 const TMDB_BASE = "https://api.themoviedb.org/3";
 
-const log = (...a) => console.log("[movie-meta]", ...a);
-const warn = (...a) => console.warn("[movie-meta]", ...a);
-
 // —— 加载本地种子目录（始终可用）——
 let SEED = [];
 try {
   const raw = readFileSync(path.join(__dirname, "movie-seed.json"), "utf8");
   SEED = JSON.parse(raw).movies || [];
-  log("本地种子目录已加载：", SEED.length, "部");
+  log.stat("本地种子", SEED.length, "部");
 } catch (e) {
-  warn("种子目录加载失败（将仅依赖 TMDB）：", e.message);
+  log.log.warn("种子目录加载失败（将仅依赖 TMDB）：", e.message);
   SEED = [];
 }
 
@@ -57,9 +55,9 @@ try {
       if (an && an.length >= 2) ALIAS_MAP.set(an, e);
     }
   }
-  log("别名消歧表已加载：", ALIAS_MAP.size, "条");
+  log.stat("别名消歧表", ALIAS_MAP.size, "条");
 } catch (e) {
-  warn("别名表加载失败（仅影响名称消歧）：", e.message);
+  log.log.warn("别名表加载失败（仅影响名称消歧）：", e.message);
 }
 
 /** 规范化查询：命中别名 → 替换为规范主名（人读可辨，且提升种子/TMDB 命中）。 */
@@ -168,7 +166,7 @@ async function searchTMDB(q, f, ms = 6000) {
       });
     return { items, used: true };
   } catch (e) {
-    warn("TMDB 检索不可用，回退种子：", e.message);
+    log.warn("TMDB 检索不可用，回退种子：", e.message);
     return { items: [], used: false };
   } finally {
     clearTimeout(t);
@@ -329,18 +327,17 @@ const server = http.createServer(async (req, res) => {
     }
     sendJSON(res, 404, { error: "未找到接口：" + url.pathname });
   } catch (e) {
-    warn("请求处理异常：", e.message);
+    log.warn("请求处理异常：", e.message);
     sendJSON(res, 500, { error: e.message });
   }
 });
 
 server.listen(PORT, () => {
-  log("影视元数据检索服务已启动： http://localhost:" + PORT);
-  log("浏览器经 Vite 同源代理 /api/movie 访问；本地种子 " + SEED.length + " 部" + (TMDB_KEY ? "，TMDB 适配器已启用" : "，TMDB 未配置（仅种子）"));
+  log.ready(`http://localhost:${PORT}`);
 });
 
 const shutdown = () => {
-  log("正在关闭…");
+  log.info("正在关闭…");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 };

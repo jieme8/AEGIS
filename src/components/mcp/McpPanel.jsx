@@ -516,24 +516,28 @@ export function McpPanel({ open, onClose }) {
   // 本轮会话「已调用过的工具」集合：会话期间持续呼吸灯，至下次会话开始清空
   const [usedTools, setUsedTools] = useState([]);
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (retries = 0) => {
     try {
       const d = await clientRef.current.getStatus();
       setData(d);
       setError(null);
     } catch (e) {
+      if (retries > 0) {
+        setTimeout(() => fetchStatus(retries - 1), 800);
+        return;
+      }
       setError(e && e.message ? e.message : "请求失败");
     } finally {
       setLoading(false);
     }
   };
 
-  // 打开时立即拉取，并以 5s 间隔轮询；关闭时停止
+  // 打开时立即拉取（首次失败自动重试 3 次，应对 relay 启动竞态），并以 5s 间隔轮询；关闭时停止
   useEffect(() => {
     if (!open) return undefined;
     setLoading(true);
-    fetchStatus();
-    const timer = setInterval(fetchStatus, 5000);
+    fetchStatus(3);
+    const timer = setInterval(() => fetchStatus(0), 5000);
     return () => clearInterval(timer);
   }, [open]);
 

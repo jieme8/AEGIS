@@ -3038,7 +3038,7 @@
   .msw.msw-open { display: block; }
   /* 无遮罩：容器本身不拦截点击（穿透到主界面），仅面板接收交互 */
   .msw-panel {
-    position: absolute; top: 50px; left: 790px; transform: none;
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
     pointer-events: auto;
     width: min(800px, 92vw); height: min(700px, 82vh);
     display: flex; flex-direction: column; overflow: hidden;
@@ -3325,10 +3325,10 @@ body[data-layout="stack"] .msw-panel {
   bottom: 72px !important; width: min(440px, 92vw) !important;
   height: auto !important;
 }
-/* 左下 HUD：宽屏/紧凑统一坐标 left:10 bottom:700（覆盖媒体查询的 bottom 覆盖） */
+/* 左下 HUD：宽屏/紧凑统一坐标 left:10 top:700（与其他浮层一致的 left,top 原点） */
 body[data-layout] .hud.bl {
-  left: 10px !important; right: auto !important; bottom: 700px !important;
-  top: auto !important;
+  left: 10px !important; right: auto !important; top: 700px !important;
+  bottom: auto !important;
 }
 /* 布局切换开关：独立停靠右上角（不再放在 hud-bl 内） */
 .layout-toggle {

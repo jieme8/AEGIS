@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { log } from "./lib/dev-log.mjs";
 /**
  * 影视搜索代理 · J.A.R.V.I.S. Cyber Audio Spectrum
  *
@@ -37,7 +38,7 @@ let ALIASES = [];
 try {
   ALIASES = JSON.parse(readFileSync(path.join(__dirname, "alias-map.json"), "utf8")).aliases || [];
 } catch (e) {
-  warn("别名表加载失败（仅影响查询规范化）：", e.message);
+  log.warn("别名表加载失败（仅影响查询规范化）：", e.message);
   ALIASES = [];
 }
 
@@ -55,10 +56,7 @@ function pickUA() {
   return ua;
 }
 
-const log = (...a) => console.log("[movie-search]", ...a);
-const warn = (...a) => console.warn("[movie-search]", ...a);
 
-// —— P2-6 结果缓存：同查询 5 分钟，降低重复抓取与 Bing 封禁概率 ——
 const RESULT_CACHE = new Map();
 const CACHE_TTL = 5 * 60 * 1000;
 const CACHE_MAX = 200;
@@ -1110,7 +1108,7 @@ async function handleSearch(req, res) {
   try {
     result = await runPipeline(q, noop);
   } catch (e) {
-    warn("实时检索异常（已忽略，回退入口）：", e.message);
+    log.warn("实时检索异常（已忽略，回退入口）：", e.message);
     result = buildResult(q, { pageItems: [], directLinks: [], verify: { expired: 0, dead: 0, unknown: 0, unverifiable: 0, total: 0 } });
   }
   cacheSet(q, result);
@@ -1140,7 +1138,7 @@ async function handleStream(req, res) {
     const result = await runPipeline(q, emit);
     emit({ type: "done", result });
   } catch (e) {
-    warn("流式检索异常：", e.message);
+    log.warn("流式检索异常：", e.message);
     emit({ type: "error", message: e.message || "检索异常" });
   } finally {
     res.end();
@@ -1162,7 +1160,7 @@ function createServer() {
       }
       sendJSON(res, 404, { error: "未找到接口：" + url.pathname });
     } catch (e) {
-      warn("请求处理异常：", e.message);
+      log.warn("请求处理异常：", e.message);
       sendJSON(res, 500, { error: e.message });
     }
   });
@@ -1170,12 +1168,11 @@ function createServer() {
 
 const server = createServer();
 server.listen(PORT, () => {
-  log("影视搜索代理已启动： http://localhost:" + PORT);
-  log("浏览器经 Vite 同源代理 /api/moviesearch 访问；本进程执行真实 Bing 检索 + 直链深抠。");
+  log.ready(`http://localhost:${PORT}`);
 });
 
 const shutdown = () => {
-  log("正在关闭…");
+  log.info("正在关闭…");
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 2000).unref();
 };

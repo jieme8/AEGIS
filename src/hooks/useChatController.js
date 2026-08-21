@@ -542,6 +542,8 @@ export function useChatController() {
       onDevModeChange(syncPanelDragMode);
       // 视口变化时重新约束面板位置/尺寸，防止越界
       window.addEventListener("resize", function () { applyRect(getRect()); });
+      // 布局模式切换（宽屏/紧凑）时刷新对话窗默认坐标与尺寸（按当前模式重新套用 defaultRect）
+      window.addEventListener("layoutmodechange", function () { applyRect(defaultRect()); });
     }
 
     const fmtTime = (ts) =>
@@ -929,6 +931,17 @@ export function useChatController() {
     function openMovieSearchWindow(query) {
       const root = ensureMovieSearchWindow();
       root.classList.add("msw-open");
+      // 默认相对浏览器视口居中：按 panel 自身宽高算出 left/top，避免被 CSS 默认值或上次拖拽位置影响
+      const panel = root.querySelector(".msw-panel");
+      if (panel) {
+        const w = panel.offsetWidth || 800;
+        const h = panel.offsetHeight || 700;
+        const cx = Math.max(8, Math.round((window.innerWidth - w) / 2));
+        const cy = Math.max(8, Math.round((window.innerHeight - h) / 2));
+        panel.style.left = cx + "px";
+        panel.style.top = cy + "px";
+        panel.style.transform = "none";
+      }
       if (window.CyberFx) window.CyberFx.thinking();
 
       const qEl = root.querySelector("#mswQuery");
