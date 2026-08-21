@@ -101,11 +101,11 @@ async function connectServer(spec) {
     server: spec.name,
   }));
   log(`已连接服务器 "${spec.name}"：${norm.length} 个工具`);
-  return { name: spec.name, client, tools: norm };
+  return { name: spec.name, client, tools: norm, toolCallTimeoutMs: spec.toolCallTimeoutMs || 60000 };
 }
 
 // 全局连接表
-let SERVERS = [];               // [{ name, client, tools }]
+let SERVERS = [];               // [{ name, client, tools, toolCallTimeoutMs }]
 const NAME_TO_SERVER = new Map(); // tool name -> server
 // 每个「声明」的服务器的运行时状态（含 disabled / error，避免被跳过后遗失）。
 // 与 mcp.config.json 的 servers 一一对应，是 /api/mcp/status 的数据源。
@@ -227,7 +227,11 @@ async function handleCall(req, res) {
   }
   try {
     if (server.name === "memory") log(`⇢ ${name} @ memory`);
-    const result = await server.client.callTool({ name, arguments: args });
+    const result = await server.client.callTool(
+      { name, arguments: args },
+      undefined,
+      { timeout: server.toolCallTimeoutMs }
+    );
     sendJSON(res, 200, {
       content: contentToString(result.content),
       isError: !!result.isError,

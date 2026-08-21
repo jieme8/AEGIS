@@ -3,9 +3,9 @@
  * 油价抓取 · J.A.R.V.I.S. Cyber Audio Spectrum — 油价卡真实数据源
  *
  * 为什么需要它：浏览器直连第三方站点会遇 CORS，且抓取逻辑不宜进前端 bundle。
- * 本模块在 Node 侧抓取「油价网」全国 92# 汽油零售指导价，解析为面板可用结构：
+ * 本模块在 Node 侧抓取「油价网」上海 92# 汽油零售指导价，解析为面板可用结构：
  *
- *   - 省份 92# 价表 -> 全国均价（price）
+ *   - 全国页表格 -> 上海 92# 单价（price）
  *   - 页面摘要 -> 上轮调价日 / 涨跌方向 / 每升幅度 / 下一轮窗口（nextAdjust / prevAdjust）
  *
  * 说明：国内成品油零售价由发改委约每 10 个工作日统一调整一次，故「实时」指
@@ -48,20 +48,24 @@ async function fetchOilHtml(ms = 12000) {
   }
 }
 
-/** 解析 HTML -> 面板结构。解析失败抛错。 */
+/** 解析 HTML -> 面板结构（只看「上海 92#」一行；其他省份丢弃）。
+ *  调价信息（涨跌方向/幅度/上下次窗口）来自 meta description，城市无关。
+ *  解析失败抛错。 */
 function parse(html) {
   // 省份 -> 92# 价：<a href="/xx.shtml">NAME</a></td><td ...>PRICE</td>
   const rowRe = /href="\/[\w]+\.shtml">([^<]+)<\/a><\/td><td[^>]*>([\d.]+)<\/td>/g;
-  const provinces = [];
+  let shanghaiPrice = null;
   let m;
   while ((m = rowRe.exec(html))) {
-    const name = m[1].trim();
-    const price = parseFloat(m[2]);
-    if (name && !isNaN(price)) provinces.push({ name, price });
+    if (m[1].trim() === "上海") {
+      shanghaiPrice = parseFloat(m[2]);
+      break;
+    }
   }
-  const prices = provinces.map((p) => p.price);
-  if (!prices.length) throw new Error("未解析到任何省份 92# 价格");
-  const avg = prices.reduce((a, b) => a + b, 0) / prices.length;
+  if (shanghaiPrice == null || isNaN(shanghaiPrice)) {
+    throw new Error("未解析到上海 92# 价格");
+  }
+  const price = round2(shanghaiPrice);
 
   // 摘要（meta description）：今日92号汽油是YYYY年M月D日H时，<上调|下调>...（X元/升-Y元/升）...新一次...将在YYYY年M月D日H时
   const desc = html.match(/今日92号汽油是[^<]+/)?.[0] || "";
@@ -75,8 +79,6 @@ function parse(html) {
     desc.match(/新一次92汽油价格调整将在([\d]+年[\d]+月[\d]+日[\d]+时)/)?.[1] || ""
   );
 
-  const price = round2(avg);
-  // change = price - prevClose；下调为负、上调为正
   const change = dir === "down" ? -delta : dir === "up" ? delta : 0;
   const prevClose = round2(price - change);
 
@@ -86,15 +88,13 @@ function parse(html) {
 
   return {
     ok: true,
-    data: { name: "92# 汽油", unit: "元/升", price, prevClose },
+    data: { name: "上海92#汽油", unit: "元/升", price, prevClose },
     forecast: { direction: dir, text: forecastText },
     nextAdjust: nextAdjust ? nextAdjust.toISOString() : null,
     prevAdjust: lastAdjust ? lastAdjust.toISOString() : null,
     change,
     delta,
     direction: dir,
-    avgCount: prices.length,
-    sampleProvinces: provinces.slice(0, 6),
     source: "油价网 qiyoujiage.com",
     fetchedAt: new Date().toISOString(),
   };

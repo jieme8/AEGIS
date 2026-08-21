@@ -25,7 +25,7 @@
       "transport": "stdio",
       "command": "npx",
       "args": ["-y", "tavily-mcp"],
-      "toolCallTimeoutMs": 20000,
+      "toolCallTimeoutMs": 600000,
       "_note": "Tavily 网页搜索（社区，质量好，专为 LLM 检索优化）。需 TAVILY_API_KEY 写入项目根 .env；Relay 启动时会载入 .env 注入本子进程。无 key 时连接会报 error，填 key 重启即转 connected。"
     },
     {

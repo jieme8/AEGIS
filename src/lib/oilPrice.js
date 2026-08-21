@@ -13,10 +13,10 @@ import { useEffect, useRef, useState } from "react";
 
 const POLL_MS = 5 * 60 * 1000; // 5 分钟
 
-// 兜底占位（与旧硬编码一致），抓取失败/初次加载时用，保证面板不空。
+// 兜底占位（与真实数据一致：上海 92# 7.75、上轮 7.93），抓取失败/初次加载时用，保证面板不空。
 const FALLBACK = {
-  data: { name: "92# 汽油", unit: "元/升", price: 7.79, prevClose: 7.98 },
-  forecast: { direction: "down", text: "预计小幅下调" },
+  data: { name: "上海92#汽油", unit: "元/升", price: 7.75, prevClose: 7.93 },
+  forecast: { direction: "down", text: "预计下调0.18元/升" },
   nextAdjust: null,
   prevAdjust: null,
 };

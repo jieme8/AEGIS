@@ -3,7 +3,7 @@
  * 油价同源代理 · J.A.R.V.I.S. Cyber Audio Spectrum
  *
  * 浏览器经 Vite 同源代理 /api/oil 访问本服务（默认 :8795），由本进程在 Node 侧
- * 抓取「油价网」并解析出真实 92# 汽油零售指导价，规避浏览器 CORS 且不让抓取逻辑进前端 bundle。
+ * 抓取「油价网」并解析出真实上海 92# 汽油零售指导价，规避浏览器 CORS 且不让抓取逻辑进前端 bundle。
  *
  * 接口： GET /api/oil            成功：200 JSON（见 oilPrice.mjs getOilPrice 结构）
  *                                失败：502 JSON { ok:false, error }
