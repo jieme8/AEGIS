@@ -59,4 +59,6 @@ bun.lock
 dist-tmp
 package-lock.json
 screenshots
+.workbuddy
+.playwright-cli
 

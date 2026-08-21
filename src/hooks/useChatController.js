@@ -1020,7 +1020,7 @@ export function useChatController() {
         const profile = providerManager.getActive();
         if (!profile || !profile.apiKey) {
           throw new Error(
-            "未配置可用的供应商密钥（请在 .env 设置 VITE_LONGCAT_API_KEYS 或 VITE_QWEN_API_KEY）"
+            "未配置可用的供应商密钥（请在 .env 设置 VITE_LONGCAT_API_KEYS）"
           );
         }
         const endpoint = profile.endpoint;

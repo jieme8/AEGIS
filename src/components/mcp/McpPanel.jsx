@@ -114,6 +114,52 @@ function parseMemoryText(text) {
   return out;
 }
 
+function AggregateRow({ agg, onOpenDetail, callingTool, usedTools = [] }) {
+  if (!agg) return null;
+  const ok = !!agg.available;
+  const used = new Set(agg.onlineSources || []);
+  const isCall = callingTool === agg.tool;
+  const isUsed = !isCall && usedTools.includes(agg.tool);
+  return (
+    <div
+      className={
+        "mcp-row mcp-row-aggregate" +
+        (isCall ? " mcp-row-aggregate-calling" : "") +
+        (isUsed ? " mcp-row-aggregate-used" : "")
+      }
+      data-dev-id="mcp-server-web_search"
+    >
+      <div className="mcp-row-head">
+        <span className="mcp-name">🔍 {agg.tool}（聚合搜索）</span>
+        <span className={`mcp-badge ${ok ? "done" : "err"}`}>
+          <span className="mcp-dot" />
+          {ok ? "可用" : "源不可用"}
+        </span>
+      </div>
+      <div className="mcp-row-meta">
+        <span>双源并行 → 去重 + 中文优先</span>
+        <span>
+          来源: {Array.isArray(agg.sources) ? agg.sources.map((s) => (typeof s === "string" ? s : s.name) + (used.has(typeof s === "string" ? s : s.name) ? " ✓" : " ✗")).join(" + ") : ""}
+        </span>
+      </div>
+      {agg.description && <div className="mcp-agg-desc">{agg.description}</div>}
+      <div className="mcp-agg-foot">
+        <span className="mcp-agg-hint">
+          已隐藏 {(agg.hidden || []).length} 个原始工具 · 点击查看
+        </span>
+        <button
+          type="button"
+          className="mcp-agg-detail-btn"
+          onClick={() => onOpenDetail && onOpenDetail()}
+          data-dev-id="mcp-aggregate-detail-open"
+        >
+          查看聚合详情 →
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function MemoryModal({ open, onClose, client }) {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState(null);
@@ -371,6 +417,88 @@ function MemoryModal({ open, onClose, client }) {
   );
 }
 
+const AGG_HIDDEN_DESC = {
+  tavily_search:
+    "Tavily 网页搜索：英文/国际源为主，支持新闻、事实、数据查询。含 extract/crawl/map/research 等附属工具仍可单独使用。",
+  AIsearch:
+    "百度 AI 搜索：基于百度 AppBuilder 智能搜索，中文内容为主，适合中文新闻、百科、国内资讯查询。",
+};
+
+// ─────────────────────────────────────────────────────────────
+// 聚合搜索详情弹层：展示 web_search 聚合隐藏了哪些原始工具、来源、在线状态与简介
+// ─────────────────────────────────────────────────────────────
+function AggregateDetailModal({ open, agg, onClose }) {
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+
+  if (!open) return null;
+  const hiddenTools = agg.hidden || [];
+  const sources = agg.sources || [];
+  // 来源名 → 展示名/在线（这里做兜底展示，实际数据由 relay 的 data.aggregate 提供）
+  const items = hiddenTools.map((toolName) => {
+    const source = sources.find((s) => s.tools && s.tools.includes(toolName));
+    const sourceName = source ? source.name : "未知源";
+    const online = source ? agg.onlineSources.includes(source.name) : false;
+    const desc =
+      AGG_HIDDEN_DESC[toolName] ||
+      "该原始搜索工具已被聚合工具 web_search 隐藏，LLM 不会单独调用。";
+    return { toolName, sourceName, online, desc };
+  });
+  const onlineCount = items.filter((i) => i.online).length;
+  return createPortal(
+    <div className="mcp-mem-backdrop" onMouseDown={onClose}>
+      <div
+        className="mcp-mem-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="聚合搜索详情 · 已隐藏工具"
+        data-dev-id="mcp-aggregate-detail-modal"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="mcp-mem-modal-head">
+          <span className="mcp-mem-modal-title">
+            🔍 {agg.tool} · 聚合详情
+          </span>
+          <span className="mcp-agg-count-badge">
+            {items.length} 个已隐藏工具 · {onlineCount} 在线
+          </span>
+          <button
+            type="button"
+            className="mcp-mem-modal-close"
+            aria-label="关闭"
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="mcp-agg-desc">
+          原始搜索工具已由 <code>web_search</code> 统一调用：Tavily + 百度 AI 双源并行、去重、中文优先。LLM 只会面对 web_search，不会单独调用下列工具。
+        </div>
+
+        <div className="mcp-agg-list">
+          {items.length === 0 && (
+            <div className="mcp-mem-empty">（无被隐藏工具）</div>
+          )}
+          {items.map((it) => (
+            <div className={"mcp-agg-item" + (it.online ? "" : " offline")} key={it.toolName}>
+              <div className="mcp-agg-item-head">
+                <span className="mcp-agg-item-lock">🔒</span>
+                <span className="mcp-agg-item-name">{it.toolName}</span>
+                <span className={"mcp-agg-item-src" + (it.online ? "" : " offline")}>
+                  from {it.sourceName} · {it.online ? "在线" : "离线"}
+                </span>
+              </div>
+              <div className="mcp-agg-item-desc">{it.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export function McpPanel({ open, onClose }) {
   const boxRef = useRef(null);
   const bodyRef = useRef(null);
@@ -381,6 +509,8 @@ export function McpPanel({ open, onClose }) {
   const clientRef = useRef(null);
   if (!clientRef.current) clientRef.current = new MCPClient();
   const [memOpen, setMemOpen] = useState(false);
+  // 聚合搜索详情弹层
+  const [aggDetailOpen, setAggDetailOpen] = useState(false);
   // 呼吸灯：记录当前正在调用的工具名（瞬时）
   const [callingTool, setCallingTool] = useState(null);
   // 本轮会话「已调用过的工具」集合：会话期间持续呼吸灯，至下次会话开始清空
@@ -516,6 +646,9 @@ export function McpPanel({ open, onClose }) {
         {!loading && !error && servers.length === 0 && (
           <div className="mcp-empty">（未配置任何 MCP 服务器）</div>
         )}
+        {!loading && !error && data && data.aggregate && (
+          <AggregateRow agg={data.aggregate} onOpenDetail={() => setAggDetailOpen(true)} callingTool={callingTool} usedTools={usedTools} />
+        )}
         {!loading && !error && servers.map((s) => (
           <McpRow
             s={s}
@@ -532,6 +665,13 @@ export function McpPanel({ open, onClose }) {
         onClose={() => setMemOpen(false)}
         client={clientRef.current}
       />
+      {data && data.aggregate && (
+        <AggregateDetailModal
+          open={aggDetailOpen}
+          agg={data.aggregate}
+          onClose={() => setAggDetailOpen(false)}
+        />
+      )}
     </div>,
     document.body
   );

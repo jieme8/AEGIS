@@ -33,9 +33,12 @@ function cardHTML(m) {
   const tags = (m.tags || []).map((t) => '<span class="msd-tag">' + esc(t) + "</span>").join("");
   const cast = (m.cast || []).slice(0, 3).map((c) => esc(c)).join("、");
   const titleAttr = esc(m.title || "");
+  const posterImg = m.poster
+    ? '<img class="msd-poster-img" src="' + esc(m.poster) + '" alt="' + titleAttr + '" loading="lazy"/>'
+    : '<span class="msd-ph">🎬</span>';
   return (
     '<div class="msd-card" data-title="' + titleAttr + '">' +
-      '<div class="msd-poster" aria-hidden="true">🎬</div>' +
+      '<div class="msd-poster" aria-hidden="false">' + posterImg + '</div>' +
       '<div class="msd-title">' + esc(m.title || "") + "</div>" +
       '<div class="msd-meta">' +
         esc(m.type || "—") + " · " + esc(m.region || "—") + " · " + esc(String(m.year || "—")) +

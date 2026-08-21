@@ -108,24 +108,6 @@ function parseProviders() {
       )
     );
   }
-  const qwenKey = envVal("VITE_QWEN_API_KEY");
-  if (qwenKey) {
-    profiles.push(
-      normalizeProfile(
-        {
-          label: envVal("VITE_QWEN_LABEL") || "阿里TokenPlan",
-          // 始终走同源代理 /api/qwen（dev + preview 一致）。
-          // 阿里 token-plan / dashscope 不返回 CORS 头，浏览器直连会被拦截；
-          // 经 vite 同源代理转发则无跨域问题。真实 prod 部署需前置代理配置 /api/*。
-          endpoint: "/api/qwen",
-          key: qwenKey.trim(),
-          model: envVal("VITE_QWEN_MODEL") || "qwen-coder-plus",
-          expiresAt: envVal("VITE_QWEN_EXPIRES") || null,
-        },
-        profiles.length
-      )
-    );
-  }
   return profiles;
 }
 

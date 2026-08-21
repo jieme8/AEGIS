@@ -2,40 +2,1353 @@
   "version": 1,
   "note": "本地影视种子目录：离线/沙箱下始终可用的元数据底座。真实部署时可由 TMDB 适配器扩展。字段：id,title,originalTitle,type(电影/剧集/动漫/纪录片/综艺),region(大陆/港台/欧美/日韩),year,rating(0-10),cast[],director,tags[],synopsis",
   "movies": [
-    { "id": "m1", "title": "盗梦空间", "originalTitle": "Inception", "type": "电影", "region": "欧美", "year": 2010, "rating": 9.4, "cast": ["莱昂纳多·迪卡普里奥", "约瑟夫·高登-莱维特", "玛丽昂·歌迪亚"], "director": "克里斯托弗·诺兰", "tags": ["科幻", "悬疑", "动作", "冒险"], "synopsis": "造梦师带领团队潜入他人梦境窃取机密，并接下植入想法的任务。" },
-    { "id": "m2", "title": "星际穿越", "originalTitle": "Interstellar", "type": "电影", "region": "欧美", "year": 2014, "rating": 9.4, "cast": ["马修·麦康纳", "安妮·海瑟薇", "杰西卡·查斯坦"], "director": "克里斯托弗·诺兰", "tags": ["科幻", "冒险", "剧情"], "synopsis": "地球濒临毁灭，一队探险家穿越虫洞为人类寻找新家园。" },
-    { "id": "m3", "title": "寄生虫", "originalTitle": "기생충", "type": "电影", "region": "日韩", "year": 2019, "rating": 8.8, "cast": ["宋康昊", "李善均", "曹如晶"], "director": "奉俊昊", "tags": ["剧情", "悬疑", "喜剧", "犯罪"], "synopsis": "底层家庭逐一渗透进富豪家，阶层鸿沟引爆失控悲剧。" },
-    { "id": "m4", "title": "霸王别姬", "originalTitle": "Farewell My Concubine", "type": "电影", "region": "大陆", "year": 1993, "rating": 9.6, "cast": ["张国荣", "张丰毅", "巩俐"], "director": "陈凯歌", "tags": ["剧情", "爱情", "历史", "古装"], "synopsis": "两位京剧伶人横跨半个世纪的悲欢与时代浮沉。" },
-    { "id": "m5", "title": "肖申克的救赎", "originalTitle": "The Shawshank Redemption", "type": "电影", "region": "欧美", "year": 1994, "rating": 9.7, "cast": ["蒂姆·罗宾斯", "摩根·弗里曼"], "director": "弗兰克·德拉邦特", "tags": ["剧情", "犯罪"], "synopsis": "蒙冤入狱的银行家在漫长岁月中坚守希望与自由。" },
-    { "id": "m6", "title": "千与千寻", "originalTitle": "千と千尋の神隠し", "type": "动漫", "region": "日韩", "year": 2001, "rating": 9.4, "cast": ["柊瑠美", "入野自由"], "director": "宫崎骏", "tags": ["奇幻", "冒险", "剧情"], "synopsis": "少女误入神灵世界，为救父母在汤屋打工成长。" },
-    { "id": "m7", "title": "疯狂动物城", "originalTitle": "Zootopia", "type": "动漫", "region": "欧美", "year": 2016, "rating": 9.2, "cast": ["金妮弗·古德温", "杰森·贝特曼"], "director": "拜伦·霍华德", "tags": ["喜剧", "冒险", "剧情"], "synopsis": "兔子警官与狐狸联手揭开动物城阴谋。" },
-    { "id": "m8", "title": "流浪地球", "originalTitle": "The Wandering Earth", "type": "电影", "region": "大陆", "year": 2019, "rating": 8.8, "cast": ["屈楚萧", "吴京", "李光洁"], "director": "郭帆", "tags": ["科幻", "冒险", "灾难"], "synopsis": "人类推动地球逃离太阳系，结伴寻找新家园。" },
-    { "id": "m9", "title": "无间道", "originalTitle": "Infernal Affairs", "type": "电影", "region": "港台", "year": 2002, "rating": 9.3, "cast": ["刘德华", "梁朝伟", "黄秋生"], "director": "刘伟强", "tags": ["悬疑", "犯罪", "剧情"], "synopsis": "警方与黑帮互派卧底，身份错位下的生死博弈。" },
-    { "id": "m10", "title": "阿凡达", "originalTitle": "Avatar", "type": "电影", "region": "欧美", "year": 2009, "rating": 8.8, "cast": ["萨姆·沃辛顿", "佐伊·索尔达娜"], "director": "詹姆斯·卡梅隆", "tags": ["科幻", "冒险", "动作"], "synopsis": "瘫痪老兵化身阿凡达，卷入潘多拉星球的存亡之战。" },
-    { "id": "m11", "title": "教父", "originalTitle": "The Godfather", "type": "电影", "region": "欧美", "year": 1972, "rating": 9.3, "cast": ["马龙·白兰度", "阿尔·帕西诺"], "director": "弗朗西斯·福特·科波拉", "tags": ["剧情", "犯罪"], "synopsis": "黑帮家族的权力交接与血腥兴衰。" },
-    { "id": "m12", "title": "楚门的世界", "originalTitle": "The Truman Show", "type": "电影", "region": "欧美", "year": 1998, "rating": 9.4, "cast": ["金·凯瑞"], "director": "彼得·威尔", "tags": ["剧情", "科幻", "喜剧"], "synopsis": "男子发现自己的人生是一场被全程直播的真人秀。" },
-    { "id": "m13", "title": "寻梦环游记", "originalTitle": "Coco", "type": "动漫", "region": "欧美", "year": 2017, "rating": 9.1, "cast": ["安东尼·冈萨雷斯"], "director": "李·昂克里奇", "tags": ["奇幻", "音乐", "剧情"], "synopsis": "男孩误入亡灵世界，追寻音乐梦想与家族记忆。" },
-    { "id": "m14", "title": "让子弹飞", "originalTitle": "Let the Bullets Fly", "type": "电影", "region": "大陆", "year": 2010, "rating": 9.0, "cast": ["姜文", "葛优", "周润发"], "director": "姜文", "tags": ["喜剧", "剧情", "动作", "历史"], "synopsis": "民国乱世中，县长、恶霸与侠客三方斗智斗勇。" },
-    { "id": "m15", "title": "海上钢琴师", "originalTitle": "The Legend of 1900", "type": "电影", "region": "欧美", "year": 1998, "rating": 9.3, "cast": ["蒂姆·罗斯"], "director": "朱塞佩·托纳多雷", "tags": ["剧情", "音乐"], "synopsis": "生于邮轮的天才钢琴师一生未踏足陆地。" },
-    { "id": "m16", "title": "银翼杀手2049", "originalTitle": "Blade Runner 2049", "type": "电影", "region": "欧美", "year": 2017, "rating": 8.5, "cast": ["瑞恩·高斯林", "哈里森·福特"], "director": "丹尼斯·维伦纽瓦", "tags": ["科幻", "悬疑", "剧情"], "synopsis": "复制人警探追查尘封秘密，叩问人性与存在。" },
-    { "id": "m17", "title": "瞬息全宇宙", "originalTitle": "Everything Everywhere All at Once", "type": "电影", "region": "欧美", "year": 2022, "rating": 8.0, "cast": ["杨紫琼", "关继威"], "director": "关家永", "tags": ["科幻", "喜剧", "动作", "奇幻"], "synopsis": "中年妈妈穿越多元宇宙，挽救家庭与时空。" },
-    { "id": "m18", "title": "阳光灿烂的日子", "originalTitle": "In the Heat of the Sun", "type": "电影", "region": "大陆", "year": 1994, "rating": 8.8, "cast": ["夏雨", "宁静", "耿乐"], "director": "姜文", "tags": ["剧情", "喜剧", "爱情"], "synopsis": "文革末期一群少年的青春躁动与朦胧爱恋。" },
-    { "id": "m19", "title": "权力的游戏", "originalTitle": "Game of Thrones", "type": "剧集", "region": "欧美", "year": 2011, "rating": 9.5, "cast": ["基特·哈灵顿", "艾米莉亚·克拉克", "彼特·丁拉基"], "director": "戴维·贝尼奥夫", "tags": ["奇幻", "剧情", "战争", "历史"], "synopsis": "维斯特洛大陆诸王争雄，铁王座下的权谋与血火。" },
-    { "id": "m20", "title": "绝命毒师", "originalTitle": "Breaking Bad", "type": "剧集", "region": "欧美", "year": 2008, "rating": 9.6, "cast": ["布莱恩·科兰斯顿", "亚伦·保尔"], "director": "文斯·吉利根", "tags": ["剧情", "犯罪", "悬疑"], "synopsis": "身患绝症的化学老师沦为制毒巨头。" },
-    { "id": "m21", "title": "甄嬛传", "originalTitle": "Empresses in the Palace", "type": "剧集", "region": "大陆", "year": 2011, "rating": 9.4, "cast": ["孙俪", "陈建斌", "蔡少芬"], "director": "郑晓龙", "tags": ["剧情", "古装", "历史"], "synopsis": "后宫女子的上位之路与深宫权斗。" },
-    { "id": "m22", "title": "请回答1988", "originalTitle": "응답하라 1988", "type": "剧集", "region": "日韩", "year": 2015, "rating": 9.7, "cast": ["李惠利", "朴宝剑", "柳俊烈"], "director": "申源浩", "tags": ["剧情", "喜剧", "爱情"], "synopsis": "1988 年 Seoul 双门洞五家人温暖琐碎的邻里青春。" },
-    { "id": "m23", "title": "隐秘的角落", "originalTitle": "The Bad Kids", "type": "剧集", "region": "大陆", "year": 2020, "rating": 8.8, "cast": ["秦昊", "荣梓杉", "史彭元"], "director": "辛爽", "tags": ["悬疑", "犯罪", "剧情"], "synopsis": "三个孩子意外录下谋杀，被拖入黑暗漩涡。" },
-    { "id": "m24", "title": "庆余年", "originalTitle": "Joy of Life", "type": "剧集", "region": "大陆", "year": 2019, "rating": 7.9, "cast": ["张若昀", "李沁", "陈道明"], "director": "孙皓", "tags": ["古装", "剧情", "科幻", "喜剧"], "synopsis": "现代青年魂穿古代，搅动朝堂与江湖。" },
-    { "id": "m25", "title": "切尔诺贝利", "originalTitle": "Chernobyl", "type": "剧集", "region": "欧美", "year": 2019, "rating": 9.7, "cast": ["杰瑞德·哈里斯", "斯特兰·斯卡斯加德"], "director": "约翰·伦克", "tags": ["剧情", "历史", "灾难"], "synopsis": "1986 年核灾难真相与无名者的牺牲。" },
-    { "id": "m26", "title": "我的天才女友", "originalTitle": "My Brilliant Friend", "type": "剧集", "region": "欧美", "year": 2018, "rating": 9.4, "cast": ["伊利莎·德尔·吉尼欧"], "director": "萨维里奥·科斯坦佐", "tags": ["剧情", "历史"], "synopsis": "两位那不勒斯女孩跨越数十年的友谊与成长。" },
-    { "id": "m27", "title": "黑暗荣耀", "originalTitle": "더 글로리", "type": "剧集", "region": "日韩", "year": 2022, "rating": 8.9, "cast": ["宋慧乔", "李到晛"], "director": "安吉镐", "tags": ["剧情", "复仇", "悬疑"], "synopsis": "校园霸凌受害者成年后以精密复仇回击。" },
-    { "id": "m28", "title": "进击的巨人", "originalTitle": "進撃の巨人", "type": "动漫", "region": "日韩", "year": 2013, "rating": 9.2, "cast": ["梶裕贵", "石川由依"], "director": "荒木哲郎", "tags": ["动作", "奇幻", "剧情", "战争"], "synopsis": "人类困于高墙之内，与吞噬人类的巨人殊死对抗。" },
-    { "id": "m29", "title": "间谍过家家", "originalTitle": "SPY×FAMILY", "type": "动漫", "region": "日韩", "year": 2022, "rating": 8.9, "cast": ["江口拓也", "早见沙织"], "director": "古桥一浩", "tags": ["喜剧", "动作", "剧情"], "synopsis": "间谍、杀手与读心女儿组成的临时家庭喜剧。" },
-    { "id": "m30", "title": "鬼灭之刃", "originalTitle": "鬼滅の刃", "type": "动漫", "region": "日韩", "year": 2019, "rating": 8.5, "cast": ["花江夏树", "鬼头明里"], "director": "外崎春雄", "tags": ["动作", "奇幻", "剧情"], "synopsis": "少年为救妹妹加入鬼杀队，斩鬼复仇。" },
-    { "id": "m31", "title": "地球脉动", "originalTitle": "Planet Earth", "type": "纪录片", "region": "欧美", "year": 2006, "rating": 9.7, "cast": ["戴维·阿滕伯勒"], "director": "阿拉斯泰尔·福瑟吉尔", "tags": ["自然", "历史"], "synopsis": "从极地到深海，史诗级镜头记录地球生机。" },
-    { "id": "m32", "title": "风味人间", "originalTitle": "Flavorful World", "type": "纪录片", "region": "大陆", "year": 2018, "rating": 9.0, "cast": ["李立宏"], "director": "陈晓卿", "tags": ["美食", "自然"], "synopsis": "跨越山海的食物地理与人间滋味。" },
-    { "id": "m33", "title": "徒手攀岩", "originalTitle": "Free Solo", "type": "纪录片", "region": "欧美", "year": 2018, "rating": 9.3, "cast": ["亚历克斯·霍诺德"], "director": "伊丽莎白·柴·瓦沙瑞莉", "tags": ["冒险", "运动"], "synopsis": "无保护独攀酋长岩的极限挑战。" },
-    { "id": "m34", "title": "这就是街舞", "originalTitle": "This Is Hip-Hop", "type": "综艺", "region": "大陆", "year": 2018, "rating": 8.0, "cast": ["易烊千玺", "罗志祥", "韩庚"], "director": "陆伟", "tags": ["音乐", "运动", "喜剧"], "synopsis": "顶尖舞者的街舞竞技真人秀。" },
-    { "id": "m35", "title": "快乐再出发", "originalTitle": "Happy Together Again", "type": "综艺", "region": "大陆", "year": 2022, "rating": 9.0, "cast": ["陈楚生", "苏醒", "王栎鑫"], "director": "赵浩", "tags": ["音乐", "喜剧"], "synopsis": "07 届快男老友的穷游式音乐旅行综艺。" }
+    {
+      "id": "m1",
+      "title": "盗梦空间",
+      "originalTitle": "Inception",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2010,
+      "rating": 9.4,
+      "cast": [
+        "莱昂纳多·迪卡普里奥",
+        "约瑟夫·高登-莱维特",
+        "玛丽昂·歌迪亚"
+      ],
+      "director": "克里斯托弗·诺兰",
+      "tags": [
+        "科幻",
+        "悬疑",
+        "动作",
+        "冒险"
+      ],
+      "synopsis": "造梦师带领团队潜入他人梦境窃取机密，并接下植入想法的任务。"
+    },
+    {
+      "id": "m2",
+      "title": "星际穿越",
+      "originalTitle": "Interstellar",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2014,
+      "rating": 9.4,
+      "cast": [
+        "马修·麦康纳",
+        "安妮·海瑟薇",
+        "杰西卡·查斯坦"
+      ],
+      "director": "克里斯托弗·诺兰",
+      "tags": [
+        "科幻",
+        "冒险",
+        "剧情"
+      ],
+      "synopsis": "地球濒临毁灭，一队探险家穿越虫洞为人类寻找新家园。"
+    },
+    {
+      "id": "m3",
+      "title": "寄生虫",
+      "originalTitle": "기생충",
+      "type": "电影",
+      "region": "日韩",
+      "year": 2019,
+      "rating": 8.8,
+      "cast": [
+        "宋康昊",
+        "李善均",
+        "曹如晶"
+      ],
+      "director": "奉俊昊",
+      "tags": [
+        "剧情",
+        "悬疑",
+        "喜剧",
+        "犯罪"
+      ],
+      "synopsis": "底层家庭逐一渗透进富豪家，阶层鸿沟引爆失控悲剧。"
+    },
+    {
+      "id": "m4",
+      "title": "霸王别姬",
+      "originalTitle": "Farewell My Concubine",
+      "type": "电影",
+      "region": "大陆",
+      "year": 1993,
+      "rating": 9.6,
+      "cast": [
+        "张国荣",
+        "张丰毅",
+        "巩俐"
+      ],
+      "director": "陈凯歌",
+      "tags": [
+        "剧情",
+        "爱情",
+        "历史",
+        "古装"
+      ],
+      "synopsis": "两位京剧伶人横跨半个世纪的悲欢与时代浮沉。"
+    },
+    {
+      "id": "m5",
+      "title": "肖申克的救赎",
+      "originalTitle": "The Shawshank Redemption",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1994,
+      "rating": 9.7,
+      "cast": [
+        "蒂姆·罗宾斯",
+        "摩根·弗里曼"
+      ],
+      "director": "弗兰克·德拉邦特",
+      "tags": [
+        "剧情",
+        "犯罪"
+      ],
+      "synopsis": "蒙冤入狱的银行家在漫长岁月中坚守希望与自由。"
+    },
+    {
+      "id": "m6",
+      "title": "千与千寻",
+      "originalTitle": "千と千尋の神隠し",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2001,
+      "rating": 9.4,
+      "cast": [
+        "柊瑠美",
+        "入野自由"
+      ],
+      "director": "宫崎骏",
+      "tags": [
+        "奇幻",
+        "冒险",
+        "剧情"
+      ],
+      "synopsis": "少女误入神灵世界，为救父母在汤屋打工成长。"
+    },
+    {
+      "id": "m7",
+      "title": "疯狂动物城",
+      "originalTitle": "Zootopia",
+      "type": "动漫",
+      "region": "欧美",
+      "year": 2016,
+      "rating": 9.2,
+      "cast": [
+        "金妮弗·古德温",
+        "杰森·贝特曼"
+      ],
+      "director": "拜伦·霍华德",
+      "tags": [
+        "喜剧",
+        "冒险",
+        "剧情"
+      ],
+      "synopsis": "兔子警官与狐狸联手揭开动物城阴谋。"
+    },
+    {
+      "id": "m8",
+      "title": "流浪地球",
+      "originalTitle": "The Wandering Earth",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2019,
+      "rating": 8.8,
+      "cast": [
+        "屈楚萧",
+        "吴京",
+        "李光洁"
+      ],
+      "director": "郭帆",
+      "tags": [
+        "科幻",
+        "冒险",
+        "灾难"
+      ],
+      "synopsis": "人类推动地球逃离太阳系，结伴寻找新家园。"
+    },
+    {
+      "id": "m9",
+      "title": "无间道",
+      "originalTitle": "Infernal Affairs",
+      "type": "电影",
+      "region": "港台",
+      "year": 2002,
+      "rating": 9.3,
+      "cast": [
+        "刘德华",
+        "梁朝伟",
+        "黄秋生"
+      ],
+      "director": "刘伟强",
+      "tags": [
+        "悬疑",
+        "犯罪",
+        "剧情"
+      ],
+      "synopsis": "警方与黑帮互派卧底，身份错位下的生死博弈。"
+    },
+    {
+      "id": "m10",
+      "title": "阿凡达",
+      "originalTitle": "Avatar",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2009,
+      "rating": 8.8,
+      "cast": [
+        "萨姆·沃辛顿",
+        "佐伊·索尔达娜"
+      ],
+      "director": "詹姆斯·卡梅隆",
+      "tags": [
+        "科幻",
+        "冒险",
+        "动作"
+      ],
+      "synopsis": "瘫痪老兵化身阿凡达，卷入潘多拉星球的存亡之战。"
+    },
+    {
+      "id": "m11",
+      "title": "教父",
+      "originalTitle": "The Godfather",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1972,
+      "rating": 9.3,
+      "cast": [
+        "马龙·白兰度",
+        "阿尔·帕西诺"
+      ],
+      "director": "弗朗西斯·福特·科波拉",
+      "tags": [
+        "剧情",
+        "犯罪"
+      ],
+      "synopsis": "黑帮家族的权力交接与血腥兴衰。"
+    },
+    {
+      "id": "m12",
+      "title": "楚门的世界",
+      "originalTitle": "The Truman Show",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1998,
+      "rating": 9.4,
+      "cast": [
+        "金·凯瑞"
+      ],
+      "director": "彼得·威尔",
+      "tags": [
+        "剧情",
+        "科幻",
+        "喜剧"
+      ],
+      "synopsis": "男子发现自己的人生是一场被全程直播的真人秀。"
+    },
+    {
+      "id": "m13",
+      "title": "寻梦环游记",
+      "originalTitle": "Coco",
+      "type": "动漫",
+      "region": "欧美",
+      "year": 2017,
+      "rating": 9.1,
+      "cast": [
+        "安东尼·冈萨雷斯"
+      ],
+      "director": "李·昂克里奇",
+      "tags": [
+        "奇幻",
+        "音乐",
+        "剧情"
+      ],
+      "synopsis": "男孩误入亡灵世界，追寻音乐梦想与家族记忆。"
+    },
+    {
+      "id": "m14",
+      "title": "让子弹飞",
+      "originalTitle": "Let the Bullets Fly",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2010,
+      "rating": 9,
+      "cast": [
+        "姜文",
+        "葛优",
+        "周润发"
+      ],
+      "director": "姜文",
+      "tags": [
+        "喜剧",
+        "剧情",
+        "动作",
+        "历史"
+      ],
+      "synopsis": "民国乱世中，县长、恶霸与侠客三方斗智斗勇。"
+    },
+    {
+      "id": "m15",
+      "title": "海上钢琴师",
+      "originalTitle": "The Legend of 1900",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1998,
+      "rating": 9.3,
+      "cast": [
+        "蒂姆·罗斯"
+      ],
+      "director": "朱塞佩·托纳多雷",
+      "tags": [
+        "剧情",
+        "音乐"
+      ],
+      "synopsis": "生于邮轮的天才钢琴师一生未踏足陆地。"
+    },
+    {
+      "id": "m16",
+      "title": "银翼杀手2049",
+      "originalTitle": "Blade Runner 2049",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2017,
+      "rating": 8.5,
+      "cast": [
+        "瑞恩·高斯林",
+        "哈里森·福特"
+      ],
+      "director": "丹尼斯·维伦纽瓦",
+      "tags": [
+        "科幻",
+        "悬疑",
+        "剧情"
+      ],
+      "synopsis": "复制人警探追查尘封秘密，叩问人性与存在。"
+    },
+    {
+      "id": "m17",
+      "title": "瞬息全宇宙",
+      "originalTitle": "Everything Everywhere All at Once",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2022,
+      "rating": 8,
+      "cast": [
+        "杨紫琼",
+        "关继威"
+      ],
+      "director": "关家永",
+      "tags": [
+        "科幻",
+        "喜剧",
+        "动作",
+        "奇幻"
+      ],
+      "synopsis": "中年妈妈穿越多元宇宙，挽救家庭与时空。"
+    },
+    {
+      "id": "m18",
+      "title": "阳光灿烂的日子",
+      "originalTitle": "In the Heat of the Sun",
+      "type": "电影",
+      "region": "大陆",
+      "year": 1994,
+      "rating": 8.8,
+      "cast": [
+        "夏雨",
+        "宁静",
+        "耿乐"
+      ],
+      "director": "姜文",
+      "tags": [
+        "剧情",
+        "喜剧",
+        "爱情"
+      ],
+      "synopsis": "文革末期一群少年的青春躁动与朦胧爱恋。"
+    },
+    {
+      "id": "m19",
+      "title": "权力的游戏",
+      "originalTitle": "Game of Thrones",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 2011,
+      "rating": 9.5,
+      "cast": [
+        "基特·哈灵顿",
+        "艾米莉亚·克拉克",
+        "彼特·丁拉基"
+      ],
+      "director": "戴维·贝尼奥夫",
+      "tags": [
+        "奇幻",
+        "剧情",
+        "战争",
+        "历史"
+      ],
+      "synopsis": "维斯特洛大陆诸王争雄，铁王座下的权谋与血火。"
+    },
+    {
+      "id": "m20",
+      "title": "绝命毒师",
+      "originalTitle": "Breaking Bad",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 2008,
+      "rating": 9.6,
+      "cast": [
+        "布莱恩·科兰斯顿",
+        "亚伦·保尔"
+      ],
+      "director": "文斯·吉利根",
+      "tags": [
+        "剧情",
+        "犯罪",
+        "悬疑"
+      ],
+      "synopsis": "身患绝症的化学老师沦为制毒巨头。"
+    },
+    {
+      "id": "m21",
+      "title": "甄嬛传",
+      "originalTitle": "Empresses in the Palace",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2011,
+      "rating": 9.4,
+      "cast": [
+        "孙俪",
+        "陈建斌",
+        "蔡少芬"
+      ],
+      "director": "郑晓龙",
+      "tags": [
+        "剧情",
+        "古装",
+        "历史"
+      ],
+      "synopsis": "后宫女子的上位之路与深宫权斗。"
+    },
+    {
+      "id": "m22",
+      "title": "请回答1988",
+      "originalTitle": "응답하라 1988",
+      "type": "剧集",
+      "region": "日韩",
+      "year": 2015,
+      "rating": 9.7,
+      "cast": [
+        "李惠利",
+        "朴宝剑",
+        "柳俊烈"
+      ],
+      "director": "申源浩",
+      "tags": [
+        "剧情",
+        "喜剧",
+        "爱情"
+      ],
+      "synopsis": "1988 年 Seoul 双门洞五家人温暖琐碎的邻里青春。"
+    },
+    {
+      "id": "m23",
+      "title": "隐秘的角落",
+      "originalTitle": "The Bad Kids",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2020,
+      "rating": 8.8,
+      "cast": [
+        "秦昊",
+        "荣梓杉",
+        "史彭元"
+      ],
+      "director": "辛爽",
+      "tags": [
+        "悬疑",
+        "犯罪",
+        "剧情"
+      ],
+      "synopsis": "三个孩子意外录下谋杀，被拖入黑暗漩涡。"
+    },
+    {
+      "id": "m24",
+      "title": "庆余年",
+      "originalTitle": "Joy of Life",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2019,
+      "rating": 7.9,
+      "cast": [
+        "张若昀",
+        "李沁",
+        "陈道明"
+      ],
+      "director": "孙皓",
+      "tags": [
+        "古装",
+        "剧情",
+        "科幻",
+        "喜剧"
+      ],
+      "synopsis": "现代青年魂穿古代，搅动朝堂与江湖。"
+    },
+    {
+      "id": "m25",
+      "title": "切尔诺贝利",
+      "originalTitle": "Chernobyl",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 2019,
+      "rating": 9.7,
+      "cast": [
+        "杰瑞德·哈里斯",
+        "斯特兰·斯卡斯加德"
+      ],
+      "director": "约翰·伦克",
+      "tags": [
+        "剧情",
+        "历史",
+        "灾难"
+      ],
+      "synopsis": "1986 年核灾难真相与无名者的牺牲。"
+    },
+    {
+      "id": "m26",
+      "title": "我的天才女友",
+      "originalTitle": "My Brilliant Friend",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 2018,
+      "rating": 9.4,
+      "cast": [
+        "伊利莎·德尔·吉尼欧"
+      ],
+      "director": "萨维里奥·科斯坦佐",
+      "tags": [
+        "剧情",
+        "历史"
+      ],
+      "synopsis": "两位那不勒斯女孩跨越数十年的友谊与成长。"
+    },
+    {
+      "id": "m27",
+      "title": "黑暗荣耀",
+      "originalTitle": "더 글로리",
+      "type": "剧集",
+      "region": "日韩",
+      "year": 2022,
+      "rating": 8.9,
+      "cast": [
+        "宋慧乔",
+        "李到晛"
+      ],
+      "director": "安吉镐",
+      "tags": [
+        "剧情",
+        "复仇",
+        "悬疑"
+      ],
+      "synopsis": "校园霸凌受害者成年后以精密复仇回击。"
+    },
+    {
+      "id": "m28",
+      "title": "进击的巨人",
+      "originalTitle": "進撃の巨人",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2013,
+      "rating": 9.2,
+      "cast": [
+        "梶裕贵",
+        "石川由依"
+      ],
+      "director": "荒木哲郎",
+      "tags": [
+        "动作",
+        "奇幻",
+        "剧情",
+        "战争"
+      ],
+      "synopsis": "人类困于高墙之内，与吞噬人类的巨人殊死对抗。"
+    },
+    {
+      "id": "m29",
+      "title": "间谍过家家",
+      "originalTitle": "SPY×FAMILY",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2022,
+      "rating": 8.9,
+      "cast": [
+        "江口拓也",
+        "早见沙织"
+      ],
+      "director": "古桥一浩",
+      "tags": [
+        "喜剧",
+        "动作",
+        "剧情"
+      ],
+      "synopsis": "间谍、杀手与读心女儿组成的临时家庭喜剧。"
+    },
+    {
+      "id": "m30",
+      "title": "鬼灭之刃",
+      "originalTitle": "鬼滅の刃",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2019,
+      "rating": 8.5,
+      "cast": [
+        "花江夏树",
+        "鬼头明里"
+      ],
+      "director": "外崎春雄",
+      "tags": [
+        "动作",
+        "奇幻",
+        "剧情"
+      ],
+      "synopsis": "少年为救妹妹加入鬼杀队，斩鬼复仇。"
+    },
+    {
+      "id": "m31",
+      "title": "地球脉动",
+      "originalTitle": "Planet Earth",
+      "type": "纪录片",
+      "region": "欧美",
+      "year": 2006,
+      "rating": 9.7,
+      "cast": [
+        "戴维·阿滕伯勒"
+      ],
+      "director": "阿拉斯泰尔·福瑟吉尔",
+      "tags": [
+        "自然",
+        "历史"
+      ],
+      "synopsis": "从极地到深海，史诗级镜头记录地球生机。"
+    },
+    {
+      "id": "m32",
+      "title": "风味人间",
+      "originalTitle": "Flavorful World",
+      "type": "纪录片",
+      "region": "大陆",
+      "year": 2018,
+      "rating": 9,
+      "cast": [
+        "李立宏"
+      ],
+      "director": "陈晓卿",
+      "tags": [
+        "美食",
+        "自然"
+      ],
+      "synopsis": "跨越山海的食物地理与人间滋味。"
+    },
+    {
+      "id": "m33",
+      "title": "徒手攀岩",
+      "originalTitle": "Free Solo",
+      "type": "纪录片",
+      "region": "欧美",
+      "year": 2018,
+      "rating": 9.3,
+      "cast": [
+        "亚历克斯·霍诺德"
+      ],
+      "director": "伊丽莎白·柴·瓦沙瑞莉",
+      "tags": [
+        "冒险",
+        "运动"
+      ],
+      "synopsis": "无保护独攀酋长岩的极限挑战。"
+    },
+    {
+      "id": "m34",
+      "title": "这就是街舞",
+      "originalTitle": "This Is Hip-Hop",
+      "type": "综艺",
+      "region": "大陆",
+      "year": 2018,
+      "rating": 8,
+      "cast": [
+        "易烊千玺",
+        "罗志祥",
+        "韩庚"
+      ],
+      "director": "陆伟",
+      "tags": [
+        "音乐",
+        "运动",
+        "喜剧"
+      ],
+      "synopsis": "顶尖舞者的街舞竞技真人秀。"
+    },
+    {
+      "id": "m35",
+      "title": "快乐再出发",
+      "originalTitle": "Happy Together Again",
+      "type": "综艺",
+      "region": "大陆",
+      "year": 2022,
+      "rating": 9,
+      "cast": [
+        "陈楚生",
+        "苏醒",
+        "王栎鑫"
+      ],
+      "director": "赵浩",
+      "tags": [
+        "音乐",
+        "喜剧"
+      ],
+      "synopsis": "07 届快男老友的穷游式音乐旅行综艺。"
+    },
+    {
+      "id": "m36",
+      "title": "蝙蝠侠：黑暗骑士",
+      "originalTitle": "The Dark Knight",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2008,
+      "rating": 9.2,
+      "cast": [
+        "克里斯蒂安·贝尔",
+        "希斯·莱杰",
+        "艾伦·艾克哈特"
+      ],
+      "director": "克里斯托弗·诺兰",
+      "tags": [
+        "动作",
+        "犯罪",
+        "惊悚"
+      ],
+      "synopsis": "小丑登场，哥谭正义与混乱的对决。"
+    },
+    {
+      "id": "m37",
+      "title": "流浪地球2",
+      "originalTitle": "The Wandering Earth II",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2023,
+      "rating": 8.3,
+      "cast": [
+        "吴京",
+        "刘德华",
+        "李雪健"
+      ],
+      "director": "郭帆",
+      "tags": [
+        "科幻",
+        "冒险",
+        "灾难"
+      ],
+      "synopsis": "太阳危机前，人类开启移山计划。"
+    },
+    {
+      "id": "m38",
+      "title": "我不是药神",
+      "originalTitle": "Dying to Survive",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2018,
+      "rating": 9,
+      "cast": [
+        "徐峥",
+        "王传君",
+        "周一围"
+      ],
+      "director": "文牧野",
+      "tags": [
+        "剧情",
+        "喜剧"
+      ],
+      "synopsis": "仿制药代购背后的生命与尊严。"
+    },
+    {
+      "id": "m39",
+      "title": "泰坦尼克号",
+      "originalTitle": "Titanic",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1997,
+      "rating": 9.5,
+      "cast": [
+        "莱昂纳多·迪卡普里奥",
+        "凯特·温丝莱特"
+      ],
+      "director": "詹姆斯·卡梅隆",
+      "tags": [
+        "爱情",
+        "灾难",
+        "剧情"
+      ],
+      "synopsis": "冰海沉船上的生死之恋。"
+    },
+    {
+      "id": "m40",
+      "title": "阿甘正传",
+      "originalTitle": "Forrest Gump",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1994,
+      "rating": 9.5,
+      "cast": [
+        "汤姆·汉克斯",
+        "罗宾·怀特"
+      ],
+      "director": "罗伯特·泽米吉斯",
+      "tags": [
+        "剧情",
+        "爱情"
+      ],
+      "synopsis": "傻子阿甘横跨美国半个世纪。"
+    },
+    {
+      "id": "m41",
+      "title": "低俗小说",
+      "originalTitle": "Pulp Fiction",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1994,
+      "rating": 8.9,
+      "cast": [
+        "约翰·特拉沃尔塔",
+        "乌玛·瑟曼",
+        "布鲁斯·威利斯"
+      ],
+      "director": "昆汀·塔伦蒂诺",
+      "tags": [
+        "犯罪",
+        "剧情"
+      ],
+      "synopsis": "环形叙事下的黑色经典。"
+    },
+    {
+      "id": "m42",
+      "title": "搏击俱乐部",
+      "originalTitle": "Fight Club",
+      "type": "电影",
+      "region": "欧美",
+      "year": 1999,
+      "rating": 8.8,
+      "cast": [
+        "布拉德·皮特",
+        "爱德华·诺顿"
+      ],
+      "director": "大卫·芬奇",
+      "tags": [
+        "剧情",
+        "悬疑"
+      ],
+      "synopsis": "身份解离与颠覆式结局。"
+    },
+    {
+      "id": "m43",
+      "title": "熔炉",
+      "originalTitle": "Silenced",
+      "type": "电影",
+      "region": "日韩",
+      "year": 2011,
+      "rating": 9.3,
+      "cast": [
+        "孔刘",
+        "郑有美"
+      ],
+      "director": "黄东赫",
+      "tags": [
+        "剧情",
+        "犯罪"
+      ],
+      "synopsis": "改编自光州仁和聋哑学校事件。"
+    },
+    {
+      "id": "m44",
+      "title": "帕丁顿熊2",
+      "originalTitle": "Paddington 2",
+      "type": "电影",
+      "region": "欧美",
+      "year": 2017,
+      "rating": 8.4,
+      "cast": [
+        "本·卫肖",
+        "休·格兰特"
+      ],
+      "director": "保罗·金",
+      "tags": [
+        "喜剧",
+        "家庭",
+        "冒险"
+      ],
+      "synopsis": "暖心小熊的城市冒险。"
+    },
+    {
+      "id": "m45",
+      "title": "你的名字",
+      "originalTitle": "Your Name",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2016,
+      "rating": 8.5,
+      "cast": [
+        "神木隆之介",
+        "上白石萌音"
+      ],
+      "director": "新海诚",
+      "tags": [
+        "动画",
+        "爱情",
+        "奇幻"
+      ],
+      "synopsis": "跨时空互换身体与彗星之约。"
+    },
+    {
+      "id": "m46",
+      "title": "天气之子",
+      "originalTitle": "Weathering with You",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2019,
+      "rating": 7.5,
+      "cast": [
+        "醍醐虎汰朗",
+        "森七菜"
+      ],
+      "director": "新海诚",
+      "tags": [
+        "动画",
+        "爱情",
+        "奇幻"
+      ],
+      "synopsis": "晴女与少年的东京奇遇。"
+    },
+    {
+      "id": "m47",
+      "title": "鬼灭之刃 无限列车篇",
+      "originalTitle": "Demon Slayer: Mugen Train",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2020,
+      "rating": 8.4,
+      "cast": [
+        "花江夏树",
+        "鬼头明里"
+      ],
+      "director": "外崎春雄",
+      "tags": [
+        "动画",
+        "动作",
+        "奇幻"
+      ],
+      "synopsis": "炭治郎一行登上无限列车。"
+    },
+    {
+      "id": "m48",
+      "title": "海贼王",
+      "originalTitle": "One Piece",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 1999,
+      "rating": 9.4,
+      "cast": [
+        "田中真弓",
+        "冈村明美"
+      ],
+      "director": "宇田钢之介",
+      "tags": [
+        "动画",
+        "冒险",
+        "喜剧"
+      ],
+      "synopsis": "路飞寻找ONE PIECE的航海冒险。"
+    },
+    {
+      "id": "m49",
+      "title": "钢之炼金术师FA",
+      "originalTitle": "Fullmetal Alchemist Brotherhood",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2009,
+      "rating": 9.7,
+      "cast": [
+        "朴璐美",
+        "钉宫理惠"
+      ],
+      "director": "入江泰浩",
+      "tags": [
+        "动画",
+        "奇幻",
+        "冒险"
+      ],
+      "synopsis": "兄弟等价交换的旅程。"
+    },
+    {
+      "id": "m50",
+      "title": "灌篮高手",
+      "originalTitle": "Slam Dunk",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 1993,
+      "rating": 9.6,
+      "cast": [
+        "草尾毅",
+        "绿川光"
+      ],
+      "director": "西泽信孝",
+      "tags": [
+        "动画",
+        "运动"
+      ],
+      "synopsis": "湘北篮球队的热血青春。"
+    },
+    {
+      "id": "m51",
+      "title": "东京喰种",
+      "originalTitle": "Tokyo Ghoul",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2014,
+      "rating": 7.8,
+      "cast": [
+        "花江夏树",
+        "雨宫天"
+      ],
+      "director": "森田修平",
+      "tags": [
+        "动画",
+        "恐怖",
+        "奇幻"
+      ],
+      "synopsis": "半喰种金木研的挣扎。"
+    },
+    {
+      "id": "m52",
+      "title": "咒术回战",
+      "originalTitle": "Jujutsu Kaisen",
+      "type": "动漫",
+      "region": "日韩",
+      "year": 2020,
+      "rating": 8.6,
+      "cast": [
+        "榎木淳弥",
+        "内田雄马"
+      ],
+      "director": "朴性厚",
+      "tags": [
+        "动画",
+        "奇幻",
+        "动作"
+      ],
+      "synopsis": "咒术师驱逐诅咒的战斗。"
+    },
+    {
+      "id": "m53",
+      "title": "驴得水",
+      "originalTitle": "Mr. Donkey",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2016,
+      "rating": 8.3,
+      "cast": [
+        "任素汐",
+        "大力",
+        "裴魁山"
+      ],
+      "director": "周申",
+      "tags": [
+        "剧情",
+        "喜剧"
+      ],
+      "synopsis": "荒诞乡村教育的黑色幽默。"
+    },
+    {
+      "id": "m54",
+      "title": "悬崖之上",
+      "originalTitle": "Cliff Walkers",
+      "type": "电影",
+      "region": "大陆",
+      "year": 2021,
+      "rating": 7.5,
+      "cast": [
+        "张译",
+        "于和伟",
+        "秦海璐"
+      ],
+      "director": "张艺谋",
+      "tags": [
+        "谍战",
+        "剧情",
+        "惊悚"
+      ],
+      "synopsis": "冰城谍影，乌特拉行动。"
+    },
+    {
+      "id": "m55",
+      "title": "深海",
+      "originalTitle": "Deep Sea",
+      "type": "动漫",
+      "region": "大陆",
+      "year": 2023,
+      "rating": 7.9,
+      "cast": [
+        "苏鑫",
+        "王亭文"
+      ],
+      "director": "田晓鹏",
+      "tags": [
+        "动画",
+        "奇幻"
+      ],
+      "synopsis": "粒子水墨的奇幻海上之旅。"
+    },
+    {
+      "id": "m56",
+      "title": "长安三万里",
+      "originalTitle": "Chang An",
+      "type": "动漫",
+      "region": "大陆",
+      "year": 2023,
+      "rating": 8.3,
+      "cast": [
+        "杨天翔",
+        "凌振赫"
+      ],
+      "director": "谢君伟",
+      "tags": [
+        "动画",
+        "历史"
+      ],
+      "synopsis": "李白与高适的大唐诗情。"
+    },
+    {
+      "id": "m57",
+      "title": "生活大爆炸",
+      "originalTitle": "The Big Bang Theory",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 2007,
+      "rating": 9.3,
+      "cast": [
+        "吉姆·帕森斯",
+        "约翰尼·盖尔克奇"
+      ],
+      "director": "查克·洛尔",
+      "tags": [
+        "喜剧",
+        "剧情"
+      ],
+      "synopsis": "一群天才书呆子的爆笑日常。"
+    },
+    {
+      "id": "m58",
+      "title": "老友记",
+      "originalTitle": "Friends",
+      "type": "剧集",
+      "region": "欧美",
+      "year": 1994,
+      "rating": 9.7,
+      "cast": [
+        "詹妮弗·安妮斯顿",
+        "柯特妮·考克斯"
+      ],
+      "director": "大卫·克雷恩",
+      "tags": [
+        "喜剧",
+        "爱情"
+      ],
+      "synopsis": "纽约六人组的十年友情。"
+    },
+    {
+      "id": "m59",
+      "title": "我们与恶的距离",
+      "originalTitle": "The World Between Us",
+      "type": "剧集",
+      "region": "港台",
+      "year": 2019,
+      "rating": 9.4,
+      "cast": [
+        "贾静雯",
+        "温升豪",
+        "曾沛慈"
+      ],
+      "director": "林君阳",
+      "tags": [
+        "剧情"
+      ],
+      "synopsis": "无差别杀人案后的众生相。"
+    },
+    {
+      "id": "m60",
+      "title": "漫长的季节",
+      "originalTitle": "The Long Season",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2023,
+      "rating": 9.4,
+      "cast": [
+        "范伟",
+        "秦昊",
+        "陈明昊"
+      ],
+      "director": "辛爽",
+      "tags": [
+        "悬疑",
+        "剧情"
+      ],
+      "synopsis": "东北悬案与时代群像。"
+    },
+    {
+      "id": "m61",
+      "title": "山海情",
+      "originalTitle": "Minning Town",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2021,
+      "rating": 9.1,
+      "cast": [
+        "黄轩",
+        "热依扎",
+        "张嘉益"
+      ],
+      "director": "孔笙",
+      "tags": [
+        "剧情"
+      ],
+      "synopsis": "闽宁协作扶贫史诗。"
+    },
+    {
+      "id": "m62",
+      "title": "觉醒年代",
+      "originalTitle": "The Age of Awakening",
+      "type": "剧集",
+      "region": "大陆",
+      "year": 2021,
+      "rating": 9.2,
+      "cast": [
+        "于和伟",
+        "张桐",
+        "侯京健"
+      ],
+      "director": "张永新",
+      "tags": [
+        "历史",
+        "剧情"
+      ],
+      "synopsis": "新文化运动与建党伟业。"
+    },
+    {
+      "id": "m63",
+      "title": "蓝色星球2",
+      "originalTitle": "Blue Planet II",
+      "type": "纪录片",
+      "region": "欧美",
+      "year": 2017,
+      "rating": 9.7,
+      "cast": [],
+      "director": "詹姆斯·霍尼伯恩",
+      "tags": [
+        "自然",
+        "纪录片"
+      ],
+      "synopsis": "深海世界的壮丽与脆弱。"
+    },
+    {
+      "id": "m64",
+      "title": "人生一串",
+      "originalTitle": "The Story of Chuaner",
+      "type": "纪录片",
+      "region": "大陆",
+      "year": 2018,
+      "rating": 9,
+      "cast": [],
+      "director": "陈英杰",
+      "tags": [
+        "美食",
+        "纪录片"
+      ],
+      "synopsis": "中国烧烤夜市的人间烟火。"
+    },
+    {
+      "id": "m65",
+      "title": "舌尖上的中国",
+      "originalTitle": "A Bite of China",
+      "type": "纪录片",
+      "region": "大陆",
+      "year": 2012,
+      "rating": 9.4,
+      "cast": [],
+      "director": "陈晓卿",
+      "tags": [
+        "美食",
+        "纪录片"
+      ],
+      "synopsis": "中华美食与乡土记忆。"
+    },
+    {
+      "id": "m66",
+      "title": "一年一度喜剧大赛",
+      "originalTitle": "Comedy Competition",
+      "type": "综艺",
+      "region": "大陆",
+      "year": 2021,
+      "rating": 9.1,
+      "cast": [
+        "马东",
+        "徐峥",
+        "黄渤"
+      ],
+      "director": "王雪",
+      "tags": [
+        "喜剧",
+        "综艺"
+      ],
+      "synopsis": "新喜剧人创作盛典。"
+    },
+    {
+      "id": "m67",
+      "title": "乐队的夏天",
+      "originalTitle": "The Big Band",
+      "type": "综艺",
+      "region": "大陆",
+      "year": 2019,
+      "rating": 8.6,
+      "cast": [
+        "马东",
+        "张亚东"
+      ],
+      "director": "王雪",
+      "tags": [
+        "音乐",
+        "综艺"
+      ],
+      "synopsis": "中国乐队音乐现场。"
+    },
+    {
+      "id": "m68",
+      "title": "我们的客栈",
+      "originalTitle": "Our Inn",
+      "type": "综艺",
+      "region": "大陆",
+      "year": 2022,
+      "rating": 7,
+      "cast": [
+        "姚晨",
+        "沙溢",
+        "杨迪"
+      ],
+      "director": "王雪",
+      "tags": [
+        "真人秀",
+        "综艺"
+      ],
+      "synopsis": "客栈经营类真人秀。"
+    }
   ]
 }

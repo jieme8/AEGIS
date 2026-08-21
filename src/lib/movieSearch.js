@@ -395,6 +395,13 @@ function renderDirectItem(it) {
   const codeLine = it.code
     ? `<div class="ms-code">提取码：<b>${escapeHtml(it.code)}</b></div>`
     : "";
+  // 索引站来源：附做种数 / 大小 / 来源（P0-3 质量行）
+  const qualityLine = it.seeders != null || it.size
+    ? `<div class="ms-meta">` +
+      [it.seeders > 0 ? `做种 ${it.seeders}` : "", it.size ? `大小 ${it.size}` : "", it.fromIndex ? `来源 ${escapeHtml(it.source || "索引站")}` : ""]
+        .filter(Boolean).join(" · ") +
+      `</div>`
+    : "";
   const rating = escapeHtml(it.rating || "需验证");
   const rc = ratingClass(it.rating);
 
@@ -421,6 +428,7 @@ function renderDirectItem(it) {
     `<span class="ms-rating ${rc}">${rating}</span>` +
     badge +
     codeLine +
+    qualityLine +
     `</li>`
   );
 }

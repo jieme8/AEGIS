@@ -47,6 +47,29 @@ try {
   SEED = [];
 }
 
+// —— 别名/译名消歧表（与 movie-search 共用）——
+const ALIAS_MAP = new Map(); // 归一化别名 → { m, en }
+try {
+  const aliases = JSON.parse(readFileSync(path.join(__dirname, "alias-map.json"), "utf8")).aliases || [];
+  for (const e of aliases) {
+    for (const a of [e.m, ...(e.aliases || [])]) {
+      const an = normalize(a || "");
+      if (an && an.length >= 2) ALIAS_MAP.set(an, e);
+    }
+  }
+  log("别名消歧表已加载：", ALIAS_MAP.size, "条");
+} catch (e) {
+  warn("别名表加载失败（仅影响名称消歧）：", e.message);
+}
+
+/** 规范化查询：命中别名 → 替换为规范主名（人读可辨，且提升种子/TMDB 命中）。 */
+function canonicalizeQuery(q) {
+  if (!q) return q;
+  const e = ALIAS_MAP.get(normalize(q));
+  if (e && normalize(e.m) !== normalize(q)) return e.m;
+  return q;
+}
+
 // —— 归一化：小写、去空白与标点，保留 CJK 与字母数字 ——
 function normalize(s) {
   return String(s == null ? "" : s)
@@ -95,7 +118,11 @@ function applyFilters(list, f) {
     if (f.director && !(m.director && normalize(m.director).includes(normalize(f.director)))) return false;
     if (f.cast && f.cast.length && !f.cast.some((c) => (m.cast || []).some((mc) => normalize(mc).includes(normalize(c))))) return false;
     if (f.tag && !has(m.tags, f.tag)) return false;
-    if (f.q && !titleFuzzyHit(normalize(f.q), normalize(m.title))) return false;
+    if (f.q) {
+      const hitTitle = titleFuzzyHit(normalize(f.q), normalize(m.title));
+      const hitOriginal = m.originalTitle && titleFuzzyHit(normalize(f.q), normalize(m.originalTitle));
+      if (!hitTitle && !hitOriginal) return false;
+    }
     return true;
   });
 }
@@ -163,7 +190,7 @@ function dedupe(seedItems, tmdbItems) {
 
 async function handleSearch(params) {
   const f = {
-    q: (params.get("q") || "").trim(),
+    q: canonicalizeQuery((params.get("q") || "").trim()),
     type: (params.get("type") || "").trim(),
     region: (params.get("region") || "").trim(),
     year: (params.get("year") || "").trim(),
@@ -180,7 +207,7 @@ async function handleSearch(params) {
   const seedMatched = applyFilters(SEED, f);
   const tmdb = await searchTMDB(f.q, f);
   const merged = dedupe(seedMatched, tmdb.items);
-  const sorted = sortResults(merged, sort).slice(0, limit);
+  const sorted = withPoster(sortResults(merged, sort).slice(0, limit));
 
   const source = tmdb.used && tmdb.items.length ? "merged" : "seed";
   return {
@@ -222,6 +249,52 @@ function handleSimilar(params) {
     .slice(0, limit)
     .map((x) => x.movie);
   return { base, recommendations: recs };
+}
+
+/** 生成竖版 SVG 海报 Data URL（离线、零外部依赖、每片不同视觉）。 */
+function posterSVG(m) {
+  const s = (x, n) => { const t = String(x == null ? "" : x); return t.length > n ? t.slice(0, n) + "…" : t; };
+  const title = s(m.title || m.originalTitle || "影视", 9);
+  const ot = s(m.originalTitle || "", 22);
+  const type = String(m.type || "电影");
+  const region = String(m.region || "");
+  const year = String(m.year || "");
+  const rating = m.rating != null ? String(m.rating) : "—";
+  const first = (String(title).replace(/[（(【\[：:·.，。]/g, "") || "影").charAt(0);
+  const palette = {
+    "电影": ["#0b2a4a", "#123f6d", "#2b8ce6"],
+    "剧集": ["#2c1550", "#45206e", "#9b5cff"],
+    "动漫": ["#0d3d34", "#14645a", "#22c7a6"],
+    "纪录片": ["#3a240a", "#5f3a12", "#e0a34e"],
+    "综艺": ["#3d0d22", "#5f1230", "#f26d96"],
+  };
+  const [c1, c2, acc] = palette[type] || palette["电影"];
+  const e = (x) => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+  const vline = (x) => `<line x1='${x}' y1='0' x2='${x}' y2='750'/>`;
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='500' height='750' viewBox='0 0 500 750'>` +
+    `<defs>` +
+    `<linearGradient id='bg' x1='0' y1='0' x2='1' y2='1'><stop offset='0%' stop-color='${c1}'/><stop offset='100%' stop-color='${c2}'/></linearGradient>` +
+    `<radialGradient id='glow' cx='50%' cy='36%' r='55%'><stop offset='0%' stop-color='${acc}' stop-opacity='0.38'/><stop offset='100%' stop-color='${acc}' stop-opacity='0'/></radialGradient>` +
+    `</defs>` +
+    `<rect width='500' height='750' fill='url(#bg)'/>` +
+    `<rect width='500' height='750' fill='url(#glow)'/>` +
+    `<g stroke='rgba(255,255,255,0.05)'>${vline(50)}${vline(130)}${vline(210)}${vline(290)}${vline(370)}${vline(450)}</g>` +
+    `<g stroke='rgba(255,255,255,0.04)'><line x1='0' y1='150' x2='500' y2='150'/><line x1='0' y1='300' x2='500' y2='300'/><line x1='0' y1='450' x2='500' y2='450'/><line x1='0' y1='600' x2='500' y2='600'/></g>` +
+    `<rect x='16' y='16' width='468' height='718' fill='none' stroke='${acc}' stroke-opacity='0.55'/>` +
+    `<rect x='23' y='23' width='454' height='704' fill='none' stroke='rgba(255,255,255,0.22)'/>` +
+    `<text x='250' y='300' font-size='250' font-family='PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif' fill='${acc}' fill-opacity='0.85' text-anchor='middle' dominant-baseline='central'>${e(first)}</text>` +
+    `<text x='48' y='532' font-size='52' font-weight='700' font-family='PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif' fill='#ffffff'>${e(title)}</text>` +
+    (ot ? `<text x='48' y='596' font-size='34' font-family='PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif' fill='rgba(255,255,255,0.78)'>${e(ot)}</text>` : "") +
+    `<text x='48' y='676' font-size='34' font-family='PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif' fill='#ffd166'>★ ${e(rating)}</text>` +
+    `<text x='262' y='676' font-size='30' text-anchor='middle' font-family='PingFang SC, Microsoft YaHei, Noto Sans CJK SC, sans-serif' fill='rgba(255,255,255,0.72)'>${e(type)} · ${e(region)} · ${e(year)}</text>` +
+    `</svg>`;
+  return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+}
+
+/** 附带 SVG 海报到结果项。 */
+function withPoster(items) {
+  return (items || []).map((m) => ({ ...m, poster: posterSVG(m) }));
 }
 
 function sendJSON(res, status, obj) {

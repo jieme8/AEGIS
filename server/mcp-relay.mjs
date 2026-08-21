@@ -167,6 +167,197 @@ function contentToString(content) {
     .trim();
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// 聚合搜索 · 双源（Tavily + 百度 AI 搜索）并行 → 归一化去重 → 中文加权排序
+// 对外暴露一个聚合工具 web_search：LLM 只调它即可一次拿到双源合体结果。
+// ════════════════════════════════════════════════════════════════════════
+const AGG_WEB_SEARCH = "web_search";
+// 原始搜索工具（聚合后对前端隐藏，避免 LLM 乱选导致漏掉双源）
+const HIDDEN_TOOLS = new Set(["tavily_search", "AIsearch"]);
+// 聚合工具依赖的两个后端 server 名（对应 mcp.config.json 的 name）
+const AGG_SOURCES = ["search", "baidu-ai-search"];
+
+// 中文倾向的域名特征：命中任一即给该条显著提升权重
+const CN_HOST_PATTERNS = [
+  /\.cn$/i, /\bcn\b/i, /\.(com\.cn|org\.cn|gov\.cn|edu\.cn|net\.cn)$/i,
+  /(^|\.)(baidu|zhihu|weibo|163|sina|qq|tencent|bilibili|douyin|xinhua|people|gmw|cctv|jschina|huanqiu|thepaper|yicai|caixin|ifeng|souhu|sohu|toutiao|jiqizhixin|csdn|cnblogs|oschina|geekbang)\./i,
+];
+
+function cnHostScore(host) {
+  let s = 0;
+  if (/\.cn$/i.test(host) || /\.cn\./.test(host)) s += 2;   // .cn 域名
+  if (CN_HOST_PATTERNS.some((re) => re.test(host))) s += 2; // 国内知名站点
+  return s;
+}
+function zhRatio(text) {
+  if (!text) return 0;
+  const zh = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
+  const all = text.replace(/\s/g, "").length || 1;
+  return zh / all;
+}
+function normalizeUrl(u) {
+  try {
+    const x = new URL(u);
+    x.hash = "";
+    x.search = "";
+    return (x.hostname + x.pathname).replace(/\/+$/, "").toLowerCase();
+  } catch {
+    return String(u || "").trim().toLowerCase();
+  }
+}
+
+const TITLE_RE = /^Title:\s*([\s\S]*?)(?=^\s*(?:ID|Content|URL|Title):\s*)/m;
+const URL_RE = /^URL:\s*(\S+)/m;
+const CONTENT_BEGIN_RE = /^Content:\s*/m;
+
+function parseTavilyResults(text) {
+  const items = [];
+  const blocks = String(text || "").split(/\n(?=Title:\s)/g);
+  for (const b of blocks) {
+    const tm = b.match(TITLE_RE);
+    const um = b.match(URL_RE);
+    const cm = b.match(CONTENT_BEGIN_RE);
+    if (!tm && !um) continue;
+    let content = "";
+    if (cm) content = b.slice(cm.index + cm[0].length).trim();
+    const title = tm ? tm[1].trim().split(/\s+/).slice(0, 60).join(" ") : um[0].split("/")[2] || "";
+    items.push({ title, url: um ? um[1].trim() : "", content, source: "tavily" });
+  }
+  return items;
+}
+
+function parseBaiduResults(text) {
+  const items = [];
+  // 以 "Title:" 作为段起点切块，块内再抽取 URL 行与 Content 部分
+  const segments = String(text || "").split(/\n(?=Title:\s*)/g);
+  for (const seg of segments) {
+    const titleM = seg.match(/^Title:\s*(.*)/);
+    if (!titleM) continue;
+    const title = titleM[1].split(/\n/)[0].replace(/^[：:\s]+/, "").trim();
+    const um = seg.match(/^URL:\s*(\S+)/m);
+    // Content 从 "Content:" 之后取到块尾；若正文后紧跟独立的 "URL:" 行则截断到该行前
+    let cm = seg.match(/^Content:\s*([\s\S]*)$/m);
+    let content = "";
+    if (cm) {
+      let raw = cm[1];
+      const cut = raw.search(/^\s*URL:\s*\S+/m);
+      if (cut >= 0) raw = raw.slice(0, cut);
+      content = raw.replace(/^\s+|\s+$/g, "");
+    }
+    items.push({
+      title,
+      url: um ? um[1].trim() : "",
+      content,
+      source: "baidu",
+    });
+  }
+  return items;
+}
+
+// 并行调用两个源服务器；任一失败静默降级（用成功的那一方，仍保证聚合可用）
+async function callSearchSource(server, name, args) {
+  try {
+    const r = await server.client.callTool({ name, arguments: args }, undefined, {
+      timeout: server.toolCallTimeoutMs || 45000,
+    });
+    if (r && r.isError) return "";
+    return contentToString(r ? r.content : null);
+  } catch (e) {
+    warn(`聚合搜索：来源 "${server.name}" 调用失败（降级）：`, e.message);
+    return "";
+  }
+}
+
+function cnOf(item) {
+  try {
+    return new URL(item.url).hostname;
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * 聚合搜索主流程：
+ * 1) 双源并行调用 tavily_search / AIsearch；
+ * 2) 分别解析为 {title,url,content,source}；
+ * 3) 按归一化 URL 去重（同源与异源重复均去）；URL 缺失按标题去重；
+ * 4) 中文加权排序：.cn 域名 / 国内站点 / 中文内容占比较高者靠前，英文站降权；
+ * 5) 输出统一文本（含来源标记），供 LLM 直接消费。
+ */
+async function runAggregatedSearch(args) {
+  const query = String(args.query || args.q || "").trim();
+  if (!query) return { error: "缺少查询 query" };
+
+  const src = new Map();
+  for (const s of SERVERS) if (AGG_SOURCES.includes(s.name)) src.set(s.name, s);
+
+  const [tavilyTxt, baiduTxt] = await Promise.all([
+    src.has("search")
+      ? callSearchSource(src.get("search"), "tavily_search", { query })
+      : Promise.resolve(""),
+    src.has("baidu-ai-search")
+      ? callSearchSource(src.get("baidu-ai-search"), "AIsearch", { query })
+      : Promise.resolve(""),
+  ]);
+
+  let items = [];
+  if (tavilyTxt) items = items.concat(parseTavilyResults(tavilyTxt));
+  if (baiduTxt) items = items.concat(parseBaiduResults(baiduTxt));
+
+  // 去重（URL 归一化；无 URL 时按标题归一化）
+  const seen = new Map();
+  for (const it of items) {
+    const key = it.url ? normalizeUrl(it.url) : "t:" + String(it.title || "").trim().toLowerCase();
+    if (!seen.has(key)) seen.set(key, it);
+  }
+  items = [...seen.values()];
+
+  // 中文加权排序
+  for (const it of items) {
+    const host = cnOf(it);
+    const ratio = zhRatio(it.title + " " + it.content);
+    // 中文内容为主 → +3；域名中文倾向 → host score；两加分叠加大于英文站
+    it._score = (ratio >= 0.4 ? 3 : ratio >= 0.1 ? 1 : 0) + cnHostScore(host);
+  }
+  items.sort((a, b) => b._score - a._score);
+
+  const engines = [];
+  if (tavilyTxt) engines.push("Tavily");
+  if (baiduTxt) engines.push("百度 AI 搜索");
+  if (!tavilyTxt && !baiduTxt) engines.push("（双源均不可用）");
+
+  const lines = [];
+  lines.push(`聚合搜索结果 · 查询：${query}`);
+  lines.push(`来源：${engines.join(" + ")}；原始 ${items.length + (seen.size ? 0 : 0)} 条已去重合并`);
+  lines.push("");
+  items.slice(0, 12).forEach((it, i) => {
+    const tag = it.source === "baidu" ? "百度" : "Tavily";
+    const host = cnOf(it);
+    lines.push(`${i + 1}. [${tag}] ${it.title || "(无标题)"}`);
+    if (it.url) lines.push(`   URL: ${it.url}`);
+    const snip = String(it.content || "").replace(/\s+/g, " ").slice(0, 300);
+    if (snip) lines.push(`   摘要: ${snip}`);
+    if (host) lines.push(`   来源站: ${host}`);
+    lines.push("");
+  });
+  if (items.length === 0) {
+    lines.push("未获取到有效结果（两源均返回空）。");
+  }
+
+  const text = lines.join("\n").trim();
+  return {
+    content: text,
+    metadata: {
+      engines,
+      total: items.length,
+      tabs: {
+        baidu: items.filter((x) => x.source === "baidu").length,
+        tavily: items.filter((x) => x.source === "tavily").length,
+      },
+    },
+  };
+}
+
 function sendJSON(res, status, obj) {
   const body = JSON.stringify(obj);
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -186,7 +377,23 @@ function readBody(req) {
 }
 
 async function handleList(res) {
-  const tools = SERVERS.flatMap((s) => s.tools);
+  // 聚合工具声明（前端直接展示给 LLM）
+  const aggTool = {
+    name: AGG_WEB_SEARCH,
+    description:
+      "聚合网页搜索（Tavily + 百度 AI 搜索双源并行）。查询一次即可同时获得英文与中文来源，已自动去重、优先中文站与中文内容。适合所有实时信息/新闻/事实/资料查询。",
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "搜索查询关键词或自然语言问题" },
+      },
+      required: ["query"],
+    },
+    server: "web_search",
+  };
+  // 过滤掉被聚合隐藏的原始搜索工具，注入聚合工具
+  const tools = SERVERS.flatMap((s) => s.tools).filter((t) => !HIDDEN_TOOLS.has(t.name));
+  tools.unshift(aggTool);
   sendJSON(res, 200, {
     servers: SERVERS.map((s) => ({ name: s.name, toolCount: s.tools.length })),
     tools,
@@ -199,10 +406,28 @@ async function handleStatus(res) {
   const error = SERVER_STATES.filter((s) => s.status === "error").length;
   // 仅 status==="connected" 视为“可正常使用”（enabled && 已连 && 有工具）
   const usable = connected;
+  // 聚合搜索依赖的两个源服务器是否在线
+  const aggSourcesOnline = AGG_SOURCES.filter((n) =>
+    SERVER_STATES.some((s) => s.name === n && s.status === "connected")
+  );
   sendJSON(res, 200, {
     ok: true,
     generatedAt: new Date().toISOString(),
-    servers: SERVER_STATES,
+    servers: SERVER_STATES.map((s) => ({
+      ...s,
+      hiddenTools: (s.tools || []).filter((t) => HIDDEN_TOOLS.has(t)),
+    })),
+    aggregate: {
+      tool: AGG_WEB_SEARCH,
+      description: "聚合网页搜索：Tavily + 百度 AI 搜索双源并行，自动去重、中文优先",
+      hidden: [...HIDDEN_TOOLS],
+      sources: AGG_SOURCES.map((name) => {
+        const s = SERVER_STATES.find((st) => st.name === name);
+        return { name, tools: s ? s.tools || [] : [] };
+      }),
+      onlineSources: aggSourcesOnline,
+      available: aggSourcesOnline.length > 0,
+    },
     summary: { total: SERVER_STATES.length, connected, disabled, error, usable },
   });
 }
@@ -218,6 +443,22 @@ async function handleCall(req, res) {
   const name = payload && payload.name;
   const args = (payload && payload.arguments) || {};
   if (!name) return sendJSON(res, 400, { error: "缺少工具名 name" });
+
+  // 聚合搜索：不走单服务器路由，直接执行双源合并
+  if (name === AGG_WEB_SEARCH) {
+    try {
+      const agg = await runAggregatedSearch(args);
+      if (agg.error) return sendJSON(res, 400, { error: agg.error });
+      return sendJSON(res, 200, {
+        content: agg.content,
+        isError: false,
+        structuredContent: agg.metadata || null,
+      });
+    } catch (e) {
+      warn(`聚合搜索 "${name}" 失败：`, e.message);
+      return sendJSON(res, 502, { error: "聚合搜索失败：" + e.message });
+    }
+  }
 
   const server = NAME_TO_SERVER.get(name);
   if (!server) {

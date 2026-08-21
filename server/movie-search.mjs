@@ -27,12 +27,54 @@
 import http from "node:http";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.MOVIE_SEARCH_PORT) || 8789;
 
+// —— 别名/译名消歧表（P0-1：查询规范化）——
+let ALIASES = [];
+try {
+  ALIASES = JSON.parse(readFileSync(path.join(__dirname, "alias-map.json"), "utf8")).aliases || [];
+} catch (e) {
+  warn("别名表加载失败（仅影响查询规范化）：", e.message);
+  ALIASES = [];
+}
+
+// —— UA 池：轮换 User-Agent，降低单 UA 被封概率（P2-6）——
+const UA_POOL = [
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0",
+  "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+];
+let _uaIdx = 0;
+function pickUA() {
+  const ua = UA_POOL[_uaIdx % UA_POOL.length];
+  _uaIdx++;
+  return ua;
+}
+
 const log = (...a) => console.log("[movie-search]", ...a);
 const warn = (...a) => console.warn("[movie-search]", ...a);
+
+// —— P2-6 结果缓存：同查询 5 分钟，降低重复抓取与 Bing 封禁概率 ——
+const RESULT_CACHE = new Map();
+const CACHE_TTL = 5 * 60 * 1000;
+const CACHE_MAX = 200;
+function cacheGet(q) {
+  const hit = RESULT_CACHE.get(q);
+  if (hit && Date.now() - hit.ts < CACHE_TTL) return hit.result;
+  RESULT_CACHE.delete(q);
+  return null;
+}
+function cacheSet(q, result) {
+  if (RESULT_CACHE.size >= CACHE_MAX) {
+    const now = Date.now();
+    for (const [k, v] of RESULT_CACHE) if (now - v.ts > CACHE_TTL) RESULT_CACHE.delete(k);
+  }
+  RESULT_CACHE.set(q, { ts: Date.now(), result });
+}
 
 const enc = (s) => encodeURIComponent(s);
 const MAGNET_RE = /magnet:\?xt=urn:btih:[A-Za-z0-9]+[^\s"'<>]*/gi;
@@ -55,6 +97,13 @@ const NETDISK_DEFS = [
 // 网盘类型优先级：夸克优先，其次阿里云盘 / 迅雷 / 百度 / 天翼 / 115
 const NETDISK_PRIORITY = { quark: 0, aliyun: 1, xunlei: 2, baidu: 3, tianyi: 4, 115: 5 };
 
+// 搜索结果摘要/链接中直接出现的网盘分享地址（供中文搜索引擎信源直链注入）
+const WEBPAN_RE = /https?:\/\/(?:[a-z0-9-]+\.)*(?:pan\.baidu\.com\/s\/|share\.lanzou[^.\s]*?\.com\/|pan\.quark\.cn\/s\/|alipan\.com\/s\/|aliyundrive\.com\/s\/|pan\.xunlei\.com\/s\/|cloud\.189\.cn\/(?:web\/|share\/)|115\.com\/)[^\s"'<>，。；()]+/gi;
+
+function safeHost(url) {
+  try { return new URL(url).hostname; } catch { return ""; }
+}
+
 // —— 站点定义（检索入口层，在用户浏览器侧打开）——
 const SEARCH_ENGINES = [
   { name: "百度", base: "https://www.baidu.com/s?wd=", suffix: " 磁力 种子 4K 1080P BT 下载" },
@@ -69,7 +118,7 @@ const CLOUD_SITES = [
   { name: "百度网盘检索", base: "https://www.baidu.com/s?wd=", suffix: " 网盘 资源 提取码" },
 ];
 
-/** 带超时的文本抓取；任何异常（网络/证书/超时/403）返回空串，绝不抛错中断主流程。 */
+/** 带超时的文本抓取（UA 池轮换）；任何异常（网络/证书/超时/403）返回空串，绝不抛错中断主流程。 */
 async function fetchText(url, ms = 6000) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), ms);
@@ -77,8 +126,7 @@ async function fetchText(url, ms = 6000) {
     const r = await fetch(url, {
       signal: ctrl.signal,
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+        "User-Agent": pickUA(),
         "Accept-Language": "zh-CN,zh;q=0.9",
       },
     });
@@ -86,6 +134,27 @@ async function fetchText(url, ms = 6000) {
     return await r.text();
   } catch (e) {
     return "";
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** 带失败状态区分的抓取（供新 source 层用；正常源返回 {ok,text}，异常返回 {ok:false, reason}）。 */
+async function fetchTextMeta(url, ms = 6000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        "User-Agent": pickUA(),
+        "Accept-Language": "zh-CN,zh;q=0.9",
+      },
+    });
+    if (!r.ok) return { ok: false, text: "", reason: `HTTP ${r.status}` };
+    return { ok: true, text: await r.text(), reason: "" };
+  } catch (e) {
+    return { ok: false, text: "", reason: e.name === "AbortError" ? "超时" : "网络错误" };
   } finally {
     clearTimeout(t);
   }
@@ -150,6 +219,7 @@ const INFO_HOSTS = [
   /douban\.com/, /baike\.baidu/, /v\.qq\.com/, /iqiyi\.com/, /youku\.com/,
   /bilibili\.com/, /mgtv\.com/, /1905\.com/, /so\.youku/, /so\.iqiyi/,
   /kktvs\.com/, /wokanys\.com/, /tvmao\.com/, /movie\.douban/,
+  /zhihu\.com/, /wikipedia\.org/, /baike\.so\.com/, /hudong\.com/,
 ];
 // 资源意图关键词
 const RES_KW = /下载|磁力|magnet|bt|种子|网盘|pan\.baidu|资源|提取码|迅雷|ed2k|4K|remux|夸克|阿里云盘|盘|影视吧|资源吧|全集|高清|完整版|bd|天碟/i;
@@ -202,7 +272,7 @@ function extractLinksWithCodes(html, regex) {
 
 /** 深抠直链：对资源页并行抓取，提取 pan/magnet/ed2k 真实链接，并就近抠提取码、解码迅雷链。 */
 async function extractDirectLinks(resourceItems) {
-  const targets = resourceItems.slice(0, 8);
+  const targets = resourceItems.slice(0, 12);
   const ndMap = new Map(); // url -> { type, code }（各类网盘分享地址 + 就近提取码）
   const magSet = new Set();
   const edSet = new Set();
@@ -304,24 +374,329 @@ async function extractDirectLinks(resourceItems) {
   return links;
 }
 
-/** Bing 定向检索：多查询并行抓取 + 过滤，返回资源页列表与命中数。 */
+// —— 并发受限执行器（抓取/请求统一限流，防止单 UA 瞬时轰炸被封）——
+async function runConcurrent(tasks, conc) {
+  let i = 0;
+  const n = Math.min(conc, Math.max(tasks.length, 1));
+  const worker = async () => {
+    while (i < tasks.length) {
+      const fn = tasks[i++];
+      await fn();
+    }
+  };
+  await Promise.all(Array.from({ length: n }, () => worker()));
+}
+
+/** 归一化：小写、去空白与标点，保留 CJK 与字母数字（与 movie-meta 侧一致）。 */
+function normalize(s) {
+  return String(s == null ? "" : s)
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+/**
+ * 相关性门控（核心质量护栏）：结果标题/摘要必须命中查询词。
+ * 命中规则：整体包含 或 命中查询词的任意 ≥3 字连续子串（容错缩写/分词），
+ * 否则判为无关（如「盗梦空间」被拆词后返回的九九乘法表）直接丢弃。
+ */
+function isRelevantSat(it, q) {
+  const qn = normalize(q);
+  if (!qn) return true;
+  const blob = normalize((it.title || "") + " " + (it.meta || ""));
+  if (!blob) return false;
+  if (blob.includes(qn)) return true;
+  if (qn.length >= 4) {
+    for (let i = 0; i + 3 <= qn.length; i++) {
+      const sub = qn.slice(i, i + 3);
+      if (sub.length >= 3 && blob.includes(sub)) return true;
+    }
+  }
+  return false;
+}
+
+/** 稳定查询包装：含空格的连续词加引号，强制 Bing 完整匹配（防拆词噪声）。 */
+function qq(s) {
+  const t = String(s == null ? "" : s).trim();
+  if (!t) return "";
+  if (/["]/.test(t)) return t;
+  return `"${t}"`;
+}
+
+/**
+ * P0-1 查询规范化：别名/译名消歧 + 年份透传 + 英文原文。
+ * 「泰坦尼克号」→ { name:"泰坦尼克号", en:"Titanic", year:"" }；
+ * 「铁达尼号 1997」→ { name:"泰坦尼克号 1997", en:"Titanic", year:"1997" }。
+ */
+export function normalizeMovieQuery(raw) {
+  const s = String(raw == null ? "" : raw).trim();
+  const ym = s.match(/\b(19|20)\d{2}\b/);
+  const year = ym ? ym[0] : "";
+  const qn = normalize(s);
+  const cands = [];
+  for (const e of ALIASES) {
+    for (const a of [e.m, ...(e.aliases || [])]) {
+      const an = normalize(a || "");
+      if (!an) continue;
+      if (qn === an || (qn.includes(an) && an.length >= 2)) cands.push({ e, an });
+    }
+  }
+  cands.sort((x, y) => y.an.length - x.an.length); // 最长别名优先（最精确）
+  const chosen = cands[0] ? cands[0].e : null;
+  let name = s;
+  if (chosen) {
+    let replaced = false;
+    for (const a of [chosen.m, ...(chosen.aliases || [])]) {
+      if (a && s.includes(a)) { name = s.replace(a, chosen.m); replaced = true; break; }
+    }
+    if (!replaced) name = chosen.m;
+    // 若输入与别名完全一致（如「Titanic zh」已含附加词），保留附加词
+    if (normalize(name) === qn && qn !== normalize(chosen.m) && !s.includes(chosen.m)) {
+      name = year ? `${chosen.m} ${year}` : chosen.m;
+    }
+  }
+  return { name: name.trim(), year, canon: chosen ? chosen.m : "", en: chosen ? chosen.en : "" };
+}
+
+/**
+ * P0-1 多查询矩阵：在保留原有 5 个定向查询的基础上，追加别名主名、年份限定、
+ * 英文原文（magnet/1080p 双通道），去重后最多 6 组，覆盖更广的帖子措辞。
+ */
+export function buildQueries(q) {
+  const { name, year, en } = normalizeMovieQuery(q);
+  const set = [];
+  const add = (x) => { const v = (x || "").trim(); if (v && !set.includes(v)) set.push(v); };
+  const hasYear = year && name.includes(year);
+  add(qq(name));
+  add(`${qq(name)} 下载`);
+  add(`${qq(name)} 磁力`);
+  add(`${qq(name)} 网盘`);
+  add(`${qq(name)} 迅雷 种子`);
+  if (year && !hasYear) {
+    add(`${qq(name)} ${year}`);
+    add(`${qq(name)} ${year} 4K`);
+  }
+  if (en) {
+    add(`${qq(en)} torrent magnet download`);
+    add(`${qq(en)} ${year || ""} 1080p`.replace(/\s+/g, " ").trim());
+  }
+  return set.slice(0, 6);
+}
+
+// —— P0-2 磁力索引源直查（server 侧主动抓取，产出带做种/大小的真实磁力）——
+// 每个源实现 build(url) 与 parse(html, q)。结构变化/反爬 → parse 返回 []，静默回退。
+function parseTorrentKitty(html) {
+  const items = [];
+  const blocks = html.split(/<li class="result"/i).slice(1);
+  if (!blocks.length) return items;
+  for (const b of blocks) {
+    const am = b.match(/<a[^>]*href="(magnet:[^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!am) continue;
+    const url = am[1].trim();
+    if (!url.startsWith("magnet:?xt=urn:btih:")) continue;
+    const title = am[2].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+    if (!title) continue;
+    const sizeM = b.match(/<td[^>]*class="size"[^>]*>([^<]+)</i) || b.match(/Size[\s\S]{0,40}<td[^>]*>([^<]{2,24})</i);
+    const size = sizeM ? sizeM[1].trim() : "";
+    items.push({ title, url, size, seeders: 0 });
+  }
+  return items;
+}
+
+function parseBt4g(html) {
+  const items = [];
+  const blocks = html.split(/<div class="result"/i).slice(1);
+  if (!blocks.length) return items;
+  for (const b of blocks) {
+    const titleM = b.match(/<a[^>]*href="[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+    const title = titleM ? titleM[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ") : "";
+    const hashM = b.match(/\/(?:magnet|view-magnet|download)\/([A-Fa-f0-9]{40})/i) || b.match(/\b([A-Fa-f0-9]{40})\b/);
+    if (!title && !hashM) continue;
+    const hash = (hashM && hashM[1]) || "";
+    if (!hash) continue;
+    // 由页面真实 btih 哈希封装标准 magnet（哈希来自站点，非伪造）
+    const url = `magnet:?xt=urn:btih:${hash.toLowerCase()}&dn=${encodeURIComponent(title)}`;
+    const seedM = b.match(/Seeds?:?\s*(\d+)/i) || b.match(/(\d+)\s+Seeder/i);
+    const seeders = seedM ? Number(seedM[1]) || 0 : 0;
+    const sizeM = b.match(/Size:?\s*([\d.]+ ?[KMGTP]?i?B)/i) || b.match(/([\d.]+ ?[KMGTP]?i?B)/i);
+    const size = sizeM ? sizeM[1].trim() : "";
+    items.push({ title: title || `BT4G 资源`, url, size, seeders });
+  }
+  return items;
+}
+
+// —— P0-2 站点定义 ——
+const INDEX_SOURCES = [
+  { key: "torrentkitty", name: "TorrentKitty", build: (q) => `https://www.torrentkitty.tv/search/${enc(q)}/`, parse: parseTorrentKitty },
+  { key: "bt4g", name: "BT4G", build: (q) => `https://bt4gprx.com/search?q=${enc(q)}`, parse: parseBt4g },
+];
+
+/** 360 搜索（so.com）结果解析：中文资源帖/网盘帖收录好，href 为真实地址。从整块抠网盘链 + 就近提取码。 */
+function parseSo360(html) {
+  const out = [];
+  const blocks = html.split(/<li class="res-list"/i).slice(1);
+  for (const b of blocks) {
+    const am = b.match(/<h3[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!am) continue;
+    let url = am[1];
+    if (/^\/\//i.test(url)) url = "https:" + url;
+    if (!/^https?:\/\//i.test(url)) continue;
+    const title = am[2].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+    if (!title) continue;
+    const snip = b.match(/<p[^>]*class="res-desc"[^>]*>([\s\S]*?)<\/p>/i) || b.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const meta = snip ? snip[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ").slice(0, 160) : "";
+    // 从整块（而非 160 字摘要）抠网盘分享链接，并就近关联提取码
+    const panLinks = extractPanWithCodes(b);
+    // href 本身就是网盘分享链接（360 部分结果直达盘页）
+    const panHrefs = [];
+    const hm = url.match(WEBPAN_RE);
+    if (hm) panHrefs.push({ url: hm[0], code: "" });
+    out.push({ title, url, host: safeHost(url), meta, panLinks, panHrefs });
+  }
+  return out;
+}
+
+/** 搜狗结果解析：中文网盘/磁力关键词命中率高；href 常为 /link?url= 重定向，正文仍可抠网盘地址。 */
+function parseSogou(html) {
+  const out = [];
+  const blocks = html.split(/<div class="vrwrap"/i).slice(1);
+  for (const b of blocks) {
+    const am = b.match(/<h3[^>]*>\s*<a[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!am) continue;
+    let url = am[1];
+    if (url.startsWith("/link?url=")) url = "https://www.sogou.com" + url;
+    if (/^\/\//i.test(url)) url = "https:" + url;
+    if (!/^https?:\/\//i.test(url)) continue;
+    const title = am[2].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ");
+    if (!title) continue;
+    const snip = b.match(/<div class="[^"]*(?:text-layout|space-txt|str_info)[^"]*"[^>]*>([\s\S]*?)<\/div>/i) || b.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const meta = snip ? snip[1].replace(/<[^>]+>/g, "").trim().replace(/\s+/g, " ").slice(0, 160) : "";
+    const panLinks = extractPanWithCodes(b);
+    const panHrefs = [];
+    const hm = url.match(WEBPAN_RE);
+    if (hm) panHrefs.push({ url: hm[0], code: "" });
+    out.push({ title, url, host: safeHost(url), meta, panLinks, panHrefs });
+  }
+  return out;
+}
+
+/** 在整块 HTML 中抠所有网盘分享链接，并为每条就近挂载提取码（±260 字符窗口）。 */
+function extractPanWithCodes(block) {
+  const links = [];
+  for (const lm of block.matchAll(WEBPAN_RE)) {
+    const url = String(lm[0]).replace(/[),。；，\s'\"]+$/g, "");
+    if (!/^https?:\/\//i.test(url)) continue;
+    const local = block.slice(Math.max(0, lm.index - 260), lm.index + 80);
+    const cm = local.match(CODE_RE);
+    links.push({ url, code: cm ? cm[1] : "" });
+  }
+  return links;
+}
+
+const WEB_SOURCES = [
+  { key: "so360", name: "360搜索", build: (q) => `https://www.so.com/s?q=${enc(q + " 网盘 资源 下载")}`, parse: parseSo360 },
+  { key: "sogou", name: "搜狗", build: (q) => `https://www.sogou.com/web?query=${enc(q + " 网盘 资源 下载")}`, parse: parseSogou },
+];
+
+// Bing 网盘定向查询（P0-2：用站名而非「百度网盘」整词，规避词典页退化）
+const PAN_TARGETS = [
+  { kw: "夸克网盘 分享" },
+  { kw: "阿里云盘 资源" },
+  { kw: "迅雷云盘 分享" },
+  { kw: "百度网盘 提取码" },
+  { kw: "贴吧 资源" },
+];
+
+/**
+ * P0-2 多源检索：磁力索引站直查（TorrentKitty / BT4G）+ Bing 网盘定向 + 360/搜狗中文资源搜索。
+ * @returns {{torrents:Array, pages:Array, pans:Array}} torrents=索引站磁力；
+ *   pages=资源线索页（供深抠）；pans=搜索结果摘要中直接暴露的网盘分享（直链注入）
+ */
+async function searchSiteSources(q) {
+  const out = { torrents: [], pages: [], pans: [] };
+  // 1) 磁力索引站直查：标题同一性初筛（差集过大会放进池子影响质量）
+  await runConcurrent(
+    INDEX_SOURCES.map((src) => async () => {
+      const { ok, text } = await fetchTextMeta(src.build(q), 6500);
+      if (!ok || !text) return;
+      try {
+        const qn = normalize(q);
+        for (const it of src.parse(text)) {
+          const tn = normalize(it.title);
+          if (tn && qn && tn.length >= 2 && !tn.includes(qn) && !qn.includes(tn)) continue;
+          out.torrents.push({ ...it, srcKey: src.key, srcName: src.name });
+        }
+      } catch { /* 解析异常静默回退 */ }
+    }),
+    2
+  );
+  // 去重（同磁力 hash 只留第一条，优先带做种）
+  const byHash = new Map();
+  for (const t of out.torrents) {
+    const h = (t.url.match(/:btih:([^&]+)/i) || [])[1];
+    const key = h || t.url;
+    const cur = byHash.get(key);
+    if (!cur) byHash.set(key, t);
+    else if (t.seeders > cur.seeders) byHash.set(key, t);
+  }
+  out.torrents = [...byHash.values()];
+
+  // 2) 网盘定向（site 词不强制，避免退化；仅取资源意图 + 相关性命中页）
+  await runConcurrent(
+    PAN_TARGETS.map((p) => async () => {
+      const query = `${qq(q)} ${p.kw}`;
+      const html = await fetchText(bingUrl(query), 6000);
+      if (!html) return;
+      for (const it of parseBingBlocks(html)) {
+        if (isInfoHost(it)) continue;
+        if (isResourceIntent(it) && isRelevantSat(it, q)) out.pages.push({ ...it, srcKey: "bing-pan", srcName: p.kw });
+      }
+    }),
+    3
+  );
+
+  // 3) 360 / 搜狗 中文资源搜索（正文暴露的网盘直链+提取码直接注入，其余入深抠池）
+  await runConcurrent(
+    WEB_SOURCES.map((w) => async () => {
+      const { ok, text } = await fetchTextMeta(w.build(q), 7000);
+      if (!ok || !text) return;
+      try {
+        for (const it of w.parse(text)) {
+          if (!isRelevantSat(it, q)) continue;
+          for (const pl of it.panLinks || []) {
+            if (pl.url) out.pans.push({ title: it.title, url: pl.url, code: pl.code || "", hostIntent: w.name, hitTitle: it.title });
+          }
+          for (const pl of it.panHrefs || []) {
+            if (pl.url) out.pans.push({ title: it.title, url: pl.url, code: pl.code || "", hostIntent: w.name, hitTitle: it.title });
+          }
+          out.pages.push({ ...it, srcKey: w.key, srcName: w.name });
+          if (out.pages.length > 14) break;
+        }
+      } catch { /* 解析异常静默 */ }
+    }),
+    2
+  );
+  return out;
+}
+
+/** Bing 定向检索（P0-1 查询矩阵 + 并发限流）：返回资源页列表与命中数。 */
 async function searchBing(name) {
-  // 定向资源查询（避开会让 Bing 退化的「百度网盘」整词与 site: 语法）
-  const queries = [name + " 下载", name + " 磁力", name + " 网盘", name + " 迅雷下载", name];
+  const queries = buildQueries(name);
   const byUrl = new Map();
-  await Promise.all(
-    queries.map(async (q) => {
+  await runConcurrent(
+    queries.map((q) => async () => {
       const html = await fetchText(bingUrl(q), 6000);
       if (!html) return;
       for (const it of parseBingBlocks(html)) {
         if (!byUrl.has(it.url)) byUrl.set(it.url, it);
       }
-    })
+    }),
+    3
   );
   const all = [...byUrl.values()];
-  // 资源意图优先，纯信息大站降级（仍保留，仅在无资源结果时兜底）
-  const resource = all.filter((it) => isResourceIntent(it) && !isInfoHost(it));
-  const info = all.filter((it) => !isResourceIntent(it) || isInfoHost(it));
+  // 资源意图优先：相关性门控（防拆词垃圾）+ 资源意图 + 非信息大站；同类降级兜底
+  const relevant = all.filter((it) => isRelevantSat(it, name));
+  const resource = relevant.filter((it) => isResourceIntent(it) && !isInfoHost(it));
+  const info = relevant.filter((it) => !isResourceIntent(it) || isInfoHost(it));
   const pageItems = (resource.length ? resource : info).slice(0, 8);
   return { pageItems, bingHit: all.length };
 }
@@ -329,13 +704,41 @@ async function searchBing(name) {
 // —— 网盘失效 / 过期页面标记（服务端直出失效页时命中；SPA 壳页会回退为 unknown）——
 const EXPIRED_RE = /已失效|链接已过期|分享已取消|分享不存在|文件已被删除|此分享已失效|访问已过期|该分享已失效|分享内容已经被取消|页面不存在|该链接分享内容可能已经删除|分享已失效|提取码错误次数过多|文件不存在|已被删除|已被取消共享|链接失效|分享已过期/i;
 
-/** 核验单条网盘分享地址：可达 + 是否命中失效标记；无法在线确认文件存在 → unknown。 */
+/** P1-4 百度网盘 /s/ 短链：走公开 shorturlinfo 接口精确核验（无需登录）。无法判定返回 null。 */
+async function verifyBaiduPan(url) {
+  const short = (url.match(/pan\.baidu\.com\/s\/([A-Za-z0-9_-]+)/i) || [])[1];
+  if (!short) return null;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const r = await fetch(`https://pan.baidu.com/api/shorturlinfo?shorturl=${encodeURIComponent(short)}`, {
+      signal: ctrl.signal,
+      headers: { "User-Agent": pickUA(), "Referer": "https://pan.baidu.com/", "Accept": "application/json" },
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const errno = Number(data && data.errno);
+    if (errno === 0) return { status: "live", note: "百度网盘分享有效（接口确认存在）" };
+    if (data && data.info && data.info.errcode) return { status: "expired", note: "百度网盘分享疑似已失效 / 过期" };
+    if ([-25, -12, -10, -7, 2].includes(errno)) return { status: "expired", note: "百度网盘分享疑似已失效 / 过期（接口 errno " + errno + "）" };
+    return null; // 未识别的 errno，回退壳页扫描
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** 核验单条网盘分享地址：优先接口精确核验（百度）→ 可达 + 是否命中失效标记；无法在线确认文件存在 → unknown。 */
 async function verifyPan(url) {
+  if (/pan\.baidu\.com\/s\//i.test(url)) {
+    const precise = await verifyBaiduPan(url);
+    if (precise) return precise;
+  }
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), 4500);
   const UA = {
-    "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "User-Agent": pickUA(),
     "Accept-Language": "zh-CN,zh;q=0.9",
   };
   try {
@@ -395,7 +798,92 @@ async function verifyLinks(items, onProgress) {
 }
 
 /**
- * 检索主流程（可上报事件）：连接 → Bing 定向检索 → 资源页深链提取 → 直链核验 → 构造结果。
+ * P0-3 索引站磁力 → 标准直链项（带做种/大小元数据，优先展示）。
+ */
+function buildIndexMagnets(torrents, cap = 10) {
+  const out = [];
+  let i = 0;
+  for (const t of torrents.slice(0, cap)) {
+    i++;
+    const good = Number(t.seeders) > 0 || !!t.size;
+    const parts = [`来源 ${t.srcName} 索引站`];
+    if (t.size) parts.push(`大小 ${t.size}`);
+    if (Number(t.seeders) > 0) parts.push(`做种 ${t.seeders}`);
+    out.push({
+      title: t.title && String(t.title).trim() ? String(t.title).trim() : `磁力链接 #${i}`,
+      url: t.url,
+      rating: good ? "良好" : "一般",
+      meta: `${parts.join(" · ")}；用迅雷 / qBittorrent 添加，无需提取码。`,
+      flags: good ? ["索引站来源"] : [],
+      source: t.srcName,
+      kind: "magnet",
+      seeders: Number(t.seeders) || 0,
+      size: t.size || "",
+      fromIndex: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * P0-3 搜索结果中直接暴露的网盘分享地址 → 标准网盘直链项（标注来源，交核验；同 URL 合并并尽量带提取码）。
+ */
+function buildWebPanLinks(pans, cap = 10) {
+  const byUrl = new Map();
+  for (const p of pans || []) {
+    const u = String(p.url || "").replace(/[)，。；，\s'\"]+$/g, "");
+    if (!/^https?:\/\//i.test(u)) continue;
+    const cur = byUrl.get(u);
+    if (!cur) byUrl.set(u, { ...p, url: u });
+    else if (p.code && !cur.code) cur.code = p.code;
+  }
+  const out = [];
+  let i = 0;
+  for (const p of byUrl.values()) {
+    if (i >= cap) break;
+    i++;
+    const host = safeHost(p.url);
+    const label = host.replace(/^pan\./, "").replace(/\.com$/, "").replace(/\.cn$/, "") || "网盘";
+    const titleM = p.title && String(p.title).trim();
+    const hasCode = !!p.code;
+    out.push({
+      title: titleM ? titleM.slice(0, 40) : `${label}分享地址 #${i}`,
+      url: p.url,
+      code: p.code || "",
+      rating: hasCode ? "良好" : "需验证",
+      meta: `来自「${p.hostIntent || "搜索摘要"}」结果${p.hitTitle ? `《${String(p.hitTitle).slice(0, 36)}》` : ""}中的网盘地址${hasCode ? "，已附提取码；点开直接填码即可转存 / 下载。" : "；点开确认有效性与提取码。"}`,
+      flags: hasCode ? ["来自搜索结果", "已附提取码"] : ["来自搜索结果", "需验证提取码"],
+      source: p.hostIntent || "搜索摘要",
+      kind: "pan",
+    });
+  }
+  return out;
+}
+
+/** 深抠优先级打分：网盘/磁力站 > 资源社区 > 通用资讯页；搜索壳页判 9（拒绝深抠，抓了也是白抓）。 */
+function deepScore(host) {
+  const h = String(host || "").toLowerCase();
+  if (/pan\.|alipan|aliyundrive|quark|xunlei|189\.cn|115\.com|lanzou/.test(h)) return 0;
+  if (/bt4g|torrentkitty|zhongziso|pansou|cilicat|btdig|1337x|kickass|magnet/gi.test(h)) return 1;
+  if (/tieba\.baidu|zhidao\.baidu|xiaokupan|1lou|remux|dy2018|ygdy8|neets|forum|bbs|blog|csdn|ithome/.test(h)) return 2;
+  if (/sogou\.com|so\.com|bing\.com|baidu\.com|microsoft|360\.cn|chinaz|hao123/.test(h)) return 9;
+  return 3;
+}
+
+/** 多来源资源页去重（按 URL 归一化去末尾斜杠）。 */
+function dedupePages(pages) {
+  const seen = new Map();
+  for (const p of pages) {
+    let key = p.url;
+    try { key = new URL(p.url).href.replace(/\/$/, ""); } catch { /* 保留原文 */ }
+    if (!seen.has(key)) seen.set(key, p);
+  }
+  return [...seen.values()];
+}
+
+/**
+ * 检索主流程（可上报事件）：连接 → 查询规范化 → Bing 矩阵 + 索引站直查 →
+ * 资源页深链提取 → 直链核验 → 构造结果。
  * @param {string} q
  * @param {(o:object)=>void} emit  事件回调（SSE 用；JSON 模式下传 noop）
  * @returns {Promise<object>} 含 groups / verify / tools 的结构化结果
@@ -403,16 +891,54 @@ async function verifyLinks(items, onProgress) {
 async function runPipeline(q, emit) {
   emit({ type: "tool", id: "connect", name: "连接实时检索代理", status: "ok", detail: "同源代理 :8789 就绪" });
 
-  emit({ type: "tool", id: "bing", name: "Bing 定向检索（5 个资源查询）", status: "running" });
-  const { pageItems, bingHit } = await searchBing(q);
-  emit({ type: "tool", id: "bing", name: "Bing 定向检索", status: "ok", detail: `命中 ${bingHit} 个结果页` });
+  const nq = normalizeMovieQuery(q);
+  const nqNote = nq.canon && nq.canon !== nq.name
+    ? `（规范名：${nq.canon}${nq.en ? " / " + nq.en : ""}${nq.year ? " / " + nq.year : ""}）`
+    : nq.en || nq.year
+      ? `（${[nq.en, nq.year].filter(Boolean).join(" / ")}）`
+      : "";
+
+  // —— 阶段一：Bing 查询矩阵 + 磁力/网盘索引站直查（可并行）——
+  const [bing, sites] = await Promise.all([
+    (async () => {
+      emit({ type: "tool", id: "bing", name: "Bing 定向检索（查询矩阵）", status: "running" });
+      const r = await searchBing(nq.name);
+      emit({ type: "tool", id: "bing", name: "Bing 定向检索", status: "ok", detail: `命中 ${r.bingHit} 个结果页${nqNote}` });
+      return r;
+    })(),
+    (async () => {
+      emit({ type: "tool", id: "sources", name: "磁力 / 网盘多源直查", status: "running" });
+      const r = await searchSiteSources(nq.name);
+      emit({
+        type: "tool", id: "sources", name: "磁力 / 网盘多源直查", status: r.torrents.length || r.pans.length ? "ok" : "warn",
+        detail: `索引磁力 ${r.torrents.length} · 摘要网盘 ${r.pans.length} · 线索页 ${r.pages.length}`,
+      });
+      return r;
+    })(),
+  ]);
+
+  const { pageItems, bingHit } = bing;
+  // 深抠池：合并 Bing + 多源页 → 剔除信息站/搜索壳页 → 资源域优先 → 取前 12 页
+  const pagePool = dedupePages([...pageItems, ...sites.pages])
+    .filter((it) => !isInfoHost(it))
+    .map((it) => ({ it, pri: deepScore(it.host) }))
+    .filter((x) => x.pri < 9)
+    .sort((a, b) => a.pri - b.pri)
+    .map((x) => x.it)
+    .slice(0, 12);
 
   emit({ type: "tool", id: "extract", name: "资源页深链提取（并行抓取 + 迅雷解码）", status: "running" });
-  const directLinks = await extractDirectLinks(pageItems);
+  const deepLinks = await extractDirectLinks(pagePool);
   emit({
     type: "tool", id: "extract", name: "资源页深链提取", status: "ok",
-    detail: `抓取 ${Math.min(pageItems.length, 8)} 页 · 提取 ${directLinks.length} 条直链`,
+    detail: `抓取 ${Math.min(pagePool.length, 12)} 页 · 提取 ${deepLinks.length} 条直链`,
   });
+
+  const directLinks = [
+    ...buildIndexMagnets(sites.torrents),
+    ...deepLinks,
+    ...buildWebPanLinks(sites.pans),
+  ];
 
   emit({ type: "tool", id: "verify", name: "直链可达性 / 网盘有效核验", status: "running" });
   const v = await verifyLinks(directLinks, (p) => emit({ type: "verify", ...p }));
@@ -421,7 +947,7 @@ async function runPipeline(q, emit) {
     detail: `网盘 ${v.total} 条 → 失效/过期 ${v.expired} · 访问失败 ${v.dead} · 待确认 ${v.unknown}；磁力/ed2k ${v.unverifiable} 条需客户端`,
   });
 
-  return buildResult(q, { pageItems, directLinks, verify: v });
+  return buildResult(q, { pageItems: pagePool, directLinks, verify: v });
 }
 
 /** 构造分层检索入口（始终返回，作为实时结果的补充）。 */
@@ -517,11 +1043,15 @@ function buildResult(query, { pageItems, directLinks, verify }) {
 
   const v = verify || { expired: 0, dead: 0, unknown: 0, unverifiable: 0, total: 0 };
   const codeCount = panItems.filter((d) => d.code).length;
+  const idxCount = (directLinks || []).filter((d) => d.fromIndex).length;
+  const magNote = (magItems.length)
+    ? ` + 磁力直链 ${magItems.length} 条${idxCount ? `（含索引站来源 ${idxCount} 条）` : ""}（需客户端核验）`
+    : "";
   return {
     query,
     keyword: "影视搜索",
     summary: live
-      ? `已为「${query}」实时检索并核验：网盘分享 ${panItems.length} 条（其中 ${v.expired} 条疑似失效/过期、${v.dead} 条访问失败、${v.unknown} 条待客户端确认，已按可用优先排列）${(magItems.length) ? ` + 磁力直链 ${magItems.length} 条（需客户端核验）` : ""}。`
+      ? `已为「${query}」实时检索并核验：网盘分享 ${panItems.length} 条（其中 ${v.expired} 条疑似失效/过期、${v.dead} 条访问失败、${v.unknown} 条待客户端确认，已按可用优先排列）${magNote}。`
       : `未检索到直链，已附分层检索入口（点开手动检索）。`,
     generatedAt: new Date().toISOString(),
     groups,
@@ -567,7 +1097,14 @@ function readQuery(req) {
 async function handleSearch(req, res) {
   const q = readQuery(req);
   if (!q) return sendJSON(res, 400, { error: "缺少查询参数 q（影视名称）" });
-  log("检索：", q);
+  // 缓存命中直接返回（避免重复抓取）；&fresh=1 强制绕过缓存（用于开发验证新逻辑）
+  let fresh = false;
+  try { fresh = new URL(req.url, "http://localhost").searchParams.get("fresh") === "1"; } catch { /* ignore */ }
+  log("检索：", q, fresh ? "(fresh)" : "");
+  if (!fresh) {
+    const cached = cacheGet(q);
+    if (cached) { sendJSON(res, 200, cached); return; }
+  }
   const noop = () => {};
   let result;
   try {
@@ -576,6 +1113,7 @@ async function handleSearch(req, res) {
     warn("实时检索异常（已忽略，回退入口）：", e.message);
     result = buildResult(q, { pageItems: [], directLinks: [], verify: { expired: 0, dead: 0, unknown: 0, unverifiable: 0, total: 0 } });
   }
+  cacheSet(q, result);
   sendJSON(res, 200, result);
 }
 

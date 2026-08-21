@@ -1873,6 +1873,81 @@
   .mcp-unusable { color: var(--dim); }
   .mcp-err { font-size: 9.5px; color: #ff8a98; background: rgba(255,92,116,0.08); border: 1px solid rgba(255,92,116,0.3); border-radius: 5px; padding: 4px 6px; word-break: break-word; }
 
+  /* ── 聚合搜索卡片（web_search · 点击弹出详情）── */
+  .mcp-row-aggregate {
+    border: 1px solid rgba(0,240,255,0.30);
+    background: linear-gradient(135deg, rgba(0,240,255,0.06), rgba(255,0,170,0.04));
+    box-shadow: 0 0 8px rgba(0,240,255,0.08) inset;
+    transition: border-color .18s, box-shadow .18s, background .25s;
+  }
+  .mcp-row-aggregate:hover {
+    border-color: rgba(0,240,255,0.60);
+    background: linear-gradient(135deg, rgba(0,240,255,0.12), rgba(255,0,170,0.07));
+    box-shadow: 0 0 14px rgba(0,240,255,0.18) inset, 0 0 10px rgba(0,240,255,0.12);
+  }
+  .mcp-agg-desc { font-size: 9.5px; color: var(--dim); margin-top: 3px; letter-spacing: .2px; }
+
+  /* 底部操作区 */
+  .mcp-agg-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    margin-top: 8px; padding-top: 7px;
+    border-top: 1px solid rgba(0,240,255,0.12);
+  }
+  .mcp-agg-hint {
+    font-size: 9px; color: var(--dim); letter-spacing: .2px;
+    font-family: var(--mono, monospace);
+  }
+  .mcp-agg-detail-btn {
+    font-size: 9.5px; font-weight: 600; letter-spacing: .3px;
+    color: var(--cyan);
+    background: rgba(0,240,255,0.08);
+    border: 1px solid rgba(0,240,255,0.35);
+    border-radius: 5px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: all .15s;
+    flex: none;
+  }
+  .mcp-agg-detail-btn:hover {
+    color: #fff;
+    background: rgba(0,240,255,0.20);
+    border-color: rgba(0,240,255,0.70);
+    box-shadow: 0 0 8px rgba(0,240,255,0.25);
+  }
+
+  /* 聚合卡片呼吸灯：web_search 被调用时整张卡片脉冲 */
+  .mcp-row-aggregate-calling {
+    border-color: var(--magenta) !important;
+    background: linear-gradient(135deg, rgba(255,0,170,0.18), rgba(0,240,255,0.10)) !important;
+    animation: mcp-agg-breathe 1.6s ease-in-out infinite;
+    box-shadow:
+      0 0 12px rgba(255,0,170,0.5),
+      0 0 24px rgba(255,0,170,0.25),
+      inset 0 0 10px rgba(255,0,170,0.2) !important;
+  }
+  .mcp-row-aggregate-used {
+    border-color: rgba(255,0,170,0.55) !important;
+    background: linear-gradient(135deg, rgba(255,0,170,0.10), rgba(0,240,255,0.06)) !important;
+    box-shadow:
+      0 0 6px rgba(255,0,170,0.3),
+      inset 0 0 6px rgba(255,0,170,0.12) !important;
+  }
+  @keyframes mcp-agg-breathe {
+    0%, 100% {
+      box-shadow:
+        0 0 10px rgba(255,0,170,0.45),
+        0 0 20px rgba(255,0,170,0.20),
+        inset 0 0 8px rgba(255,0,170,0.18);
+    }
+    50% {
+      box-shadow:
+        0 0 18px rgba(255,0,170,0.75),
+        0 0 36px rgba(255,0,170,0.35),
+        0 0 56px rgba(0,240,255,0.15),
+        inset 0 0 14px rgba(255,0,170,0.30);
+    }
+  }
+
   .mcp-tools { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 1px; }
   .mcp-tool {
     font-size: 9px; letter-spacing: .3px; color: var(--cyan);
@@ -2042,6 +2117,56 @@
   .mcp-mem-refresh:disabled { opacity: .5; cursor: default; }
   .mcp-mem-loading, .mcp-mem-empty { font-size: 11px; color: var(--dim); font-style: italic; padding: 2px 0; line-height: 1.5; }
   .mcp-mem-empty.err { color: #ff8a98; font-style: normal; }
+
+  /* ── 聚合搜索详情弹层（点击展开，信息丰富）── */
+  .mcp-agg-count-badge {
+    font-size: 9.5px; letter-spacing: .3px; color: #ffb14e;
+    font-family: var(--mono, monospace);
+    background: rgba(255,160,60,0.10);
+    border: 1px solid rgba(255,160,60,0.35);
+    border-radius: 4px; padding: 2px 8px;
+    margin-left: auto; margin-right: 8px;
+  }
+  .mcp-agg-list {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 10px 14px 14px;
+    overflow-y: auto;
+  }
+  .mcp-agg-item {
+    background: linear-gradient(135deg, rgba(0,240,255,0.06), rgba(255,0,170,0.04));
+    border: 1px solid rgba(0,240,255,0.20);
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .mcp-agg-item:hover {
+    border-color: rgba(0,240,255,0.50);
+    box-shadow: 0 0 10px rgba(0,240,255,0.10);
+  }
+  .mcp-agg-item.offline {
+    border-color: rgba(255,160,60,0.25);
+    background: linear-gradient(135deg, rgba(255,160,60,0.05), rgba(255,0,170,0.03));
+  }
+  .mcp-agg-item-head {
+    display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .mcp-agg-item-lock { font-size: 11px; }
+  .mcp-agg-item-name {
+    font-size: 11.5px; font-weight: 700; color: var(--cyan);
+    font-family: var(--mono, monospace);
+  }
+  .mcp-agg-item-src {
+    font-size: 9px; color: #c9874a;
+    font-family: var(--mono, monospace);
+    border-left: 1px solid rgba(255,160,60,0.30);
+    padding-left: 6px;
+  }
+  .mcp-agg-item-src.offline { color: #8a6a50; }
+  .mcp-agg-item-desc {
+    font-size: 9.5px; color: var(--dim); line-height: 1.6;
+    padding-left: 20px;
+  }
   .mcp-mem-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
   .mcp-mem-item {
     display: grid; grid-template-columns: 1fr auto; grid-template-areas: "key actions" "val actions";
@@ -3009,7 +3134,9 @@
   .msd-head b { color: #fff; }
   .msd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
   .msd-card { background: rgba(0,240,255,0.04); border: 1px solid rgba(0,240,255,0.18); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 4px; }
-  .msd-poster { height: 64px; border-radius: 6px; background: linear-gradient(135deg, rgba(0,240,255,0.12), rgba(177,75,255,0.12)); display: flex; align-items: center; justify-content: center; font-size: 26px; margin-bottom: 4px; }
+  .msd-poster { position: relative; aspect-ratio: 2/3; width: 100%; border-radius: 8px; background: linear-gradient(135deg, rgba(0,240,255,0.10), rgba(177,75,255,0.10)); display: flex; align-items: center; justify-content: center; overflow: hidden; margin-bottom: 6px; }
+  .msd-ph { font-size: 30px; opacity: .55; }
+  .msd-poster-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .msd-title { font-size: 13.5px; font-weight: 500; color: var(--txt); line-height: 1.3; }
   .msd-meta { font-size: 11px; color: var(--dim); }
   .msd-rating { font-size: 12px; color: #ffd166; }
