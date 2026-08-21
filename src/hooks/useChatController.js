@@ -769,7 +769,7 @@ export function useChatController() {
     }
 
     function showTyping() {
-      if (window.CyberFx) window.CyberFx.thinking();   // 进入“思考中”页面特效
+      if (window.CyberFx) window.CyberFx.thinking();   // 进入"思考中"页面特效
       const wrap = document.createElement("div");
       wrap.className = "chat-msg ai chat-typing";
       wrap.innerHTML =
@@ -777,6 +777,31 @@ export function useChatController() {
         '<div class="bubble"><span class="tdot"></span><span class="tdot"></span><span class="tdot"></span></div>';
       messagesEl.appendChild(wrap);
       scrollBottom();
+      // 覆盖 .remove：先加 chat-typing-leaving 触发 0.18s 淡出 + 上移过渡，
+      // 避免 typing → streaming 切换时"思考点硬切消失"那一帧的视觉跳跃。
+      // 用 animationend 准确收尾，再加 setTimeout 兜底（动画事件偶尔不触发）。
+      let dismissed = false;
+      const nativeRemove = HTMLElement.prototype.remove;
+      wrap.remove = function dismissTyping() {
+        if (dismissed) return;
+        dismissed = true;
+        if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+          nativeRemove.call(wrap);
+          return;
+        }
+        const bubble = wrap.querySelector(".bubble");
+        if (!bubble) { nativeRemove.call(wrap); return; }
+        wrap.classList.add("chat-typing-leaving");
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          if (wrap.parentNode) nativeRemove.call(wrap);
+        };
+        bubble.addEventListener("animationend", finish, { once: true });
+        // 兜底：chat-typing-out 是 0.18s，260ms 留足容差
+        setTimeout(finish, 260);
+      };
       return wrap;
     }
 

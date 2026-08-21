@@ -17,7 +17,7 @@
       "command": "node",
       "args": ["server/mcp-memory.mjs"],
       "toolCallTimeoutMs": 20000,
-      "_note": "Phase 1.2 已启用；自研跨会话记忆服务器（仅依赖已装 SDK，离线可跑）。官方包 @modelcontextprotocol/server-memory 在本沙箱无法安装（npm/npx 联网通道被挡 + Windows npx bin 解析坑），故自研等价实现。换回官方：command 改 npx、args 改 ['-y','@modelcontextprotocol/server-memory']。"
+      "_note": "Phase 1.2 已启用；自研跨会话记忆服务器。存储：SQLite（项目根 memory_db/memory.db，node:sqlite 零依赖）；向量：本地 Ollama bge-small-zh-v1.5（离线无 key，POST {OLLAMA_URL}/api/embed）；检索：向量 cosine + 关键词 bigram + 时间衰减 + 重要性混合打分。启动时自动把旧版 ~/.jarvis-mcp 数据迁移到项目 memory_db/。可用 OLLAMA_URL / OLLAMA_EMBED_MODEL 覆盖默认。"
     },
     {
       "name": "search",

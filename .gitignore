@@ -47,9 +47,16 @@ pnpm-debug.log*
 *.backup
 *.old
 
+# ---------- 本地记忆数据库（含用户记忆，不入库） ----------
+memory_db/
+*.db
+*.db-wal
+*.db-shm
+
 package-lock.json
 .workbuddy
 bun.lock
 dist-tmp
 package-lock.json
+screenshots
 

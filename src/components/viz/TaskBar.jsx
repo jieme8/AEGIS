@@ -51,6 +51,7 @@ export function TaskBar({ active, onActivate, onToggleMap, mapOpen, onToggleFeat
               key={t.id}
               id={t.id}
               type="button"
+              title={t.label}
               className={"tb-btn" + (isActive ? " active" : "") + (t.danger ? " danger" : "")}
               onClick={() => {
                 if (t.id === "task-settings") { onOpenSettings?.(); return; }

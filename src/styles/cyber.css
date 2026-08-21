@@ -334,14 +334,62 @@
     opacity: .92; text-shadow: 0 0 8px rgba(0,240,255,0.55);
   }
 
-  .chat-typing .bubble { display: inline-flex; gap: 4px; padding: 11px 14px; }
-  .chat-typing .tdot {
-    width: 6px; height: 6px; border-radius: 50%; background: var(--cyan);
-    animation: chatblink 1.2s infinite ease-in-out;
+  /* 思考中气泡：
+     - 三个 dot 用 transform + opacity 双轴动画（仅走合成层，不触发布局/重绘）
+     - 错开 0.16s 形成"波纹"节奏，1.3s 周期比原来 1.2s 更稳
+     - will-change 提示浏览器提前把 tdot 提升到合成层，避免父 .chat-panel 的 backdrop-filter 拖垮整层
+     - 切换为流式时加 .chat-typing-leaving 触发淡出，避免硬切"消失一帧" */
+  .chat-typing .bubble {
+    display: inline-flex; gap: 5px; padding: 11px 14px;
+    will-change: transform, opacity;
   }
-  .chat-typing .tdot:nth-child(2) { animation-delay: .2s; }
-  .chat-typing .tdot:nth-child(3) { animation-delay: .4s; }
-  @keyframes chatblink { 0%,60%,100% { opacity: .3; } 30% { opacity: 1; } }
+  .chat-typing .tdot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--cyan);
+    box-shadow: 0 0 6px rgba(0,240,255,0.55);
+    animation: chat-thinking 1.3s cubic-bezier(.45,.05,.55,.95) infinite;
+    will-change: transform, opacity;
+  }
+  .chat-typing .tdot:nth-child(1) { animation-delay: 0s; }
+  .chat-typing .tdot:nth-child(2) { animation-delay: .16s; }
+  .chat-typing .tdot:nth-child(3) { animation-delay: .32s; }
+  @keyframes chat-thinking {
+    0%, 60%, 100% { opacity: .35; transform: translateY(0); }
+    30%           { opacity: 1;   transform: translateY(-4px); }
+  }
+  /* 思考 → 流式切换：思考气泡淡出 + 上移 3px，避免硬切"消失一帧" */
+  .chat-typing.chat-typing-leaving .bubble {
+    animation: chat-typing-out .18s ease forwards;
+  }
+  @keyframes chat-typing-out {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    /* loading 指示在「减少动态」下也不能完全静止（否则会被误判为卡死）：
+       保留慢速柔和的 opacity 呼吸，仅去掉位移；动画节奏刻意放慢 1.3s→2.6s */
+    .chat-typing .tdot {
+      animation: chat-thinking-reduced 2.6s ease-in-out infinite;
+      will-change: opacity;
+    }
+    @keyframes chat-thinking-reduced {
+      0%, 100% { opacity: .55; }
+      50%      { opacity: 1; }
+    }
+    /* 进入/离开这类位移过渡尊重减少动态，直接不播 */
+    .chat-typing.chat-typing-leaving .bubble { animation: none; opacity: 0; }
+    .chat-streaming { animation: none; }
+  }
+
+  /* 流式气泡进入动画：思考点淡出后，流式气泡淡入 + 轻微上移，避免"啪"一下出现 */
+  .chat-streaming {
+    animation: chat-stream-in .22s ease-out both;
+  }
+  .chat-streaming .bubble { will-change: transform, opacity; }
+  @keyframes chat-stream-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
   /* —— 影视搜索结果卡片（@影视搜索 指令返回）——
      复用 AI 气泡容器，但放宽宽度以容纳结构化列表；配色沿用 cyan/magenta 赛博语言。 */
@@ -794,10 +842,15 @@
     box-shadow: 0 0 8px var(--cyan), 0 0 14px rgba(0,240,255,0.5);
     /* led 呼吸灯：吸引注意但不刺眼 */
     animation: chat-action-led-pulse 1.6s ease-in-out infinite;
+    will-change: transform, opacity;
   }
   @keyframes chat-action-led-pulse {
     0%, 100% { opacity: 1; transform: scale(1); }
     50%      { opacity: 0.55; transform: scale(0.85); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .chat-action-bar { animation: none; }
+    .chat-action-led { animation: none; opacity: .9; }
   }
   .chat-action-label { flex: 1; min-width: 0; }
   .chat-action-arrow {
@@ -1238,11 +1291,15 @@
     display: flex; align-items: center; gap: 10px;
     padding: 7px 10px;
     border-radius: 8px;
+    /* 窄屏兜底：强制单行并限宽，宽度由任务内容决定（配合下方断点收敛为图标态） */
+    max-width: calc(100vw - 20px);
+    flex-wrap: nowrap;
   }
   .task-bar .tb-label {
     font-size: 10px; letter-spacing: 3px; color: var(--dim);
     padding-right: 8px; margin-right: 2px;
     border-right: 1px solid rgba(0,240,255,0.2);
+    white-space: nowrap;
   }
   /* 隐藏的开关触发器（对话 / MCP）：仅供底部任务栏点击，自身不显示 */
   .hud-triggers { display: none; }
@@ -1257,10 +1314,11 @@
     20%      { box-shadow: 0 0 0 3px rgba(0,240,255,0.85), 0 0 22px rgba(0,240,255,0.5); }
     60%      { box-shadow: 0 0 0 2px rgba(255,43,214,0.7), 0 0 18px rgba(255,43,214,0.4); }
   }
-  .task-bar .tb-items { display: flex; align-items: center; gap: 8px; }
+  .task-bar .tb-items { display: flex; align-items: center; gap: 8px; max-width: 100%; flex-wrap: nowrap; }
   .tb-btn {
     position: relative;
     display: flex; align-items: center; gap: 6px;
+    flex: 0 0 auto; white-space: nowrap;
     font-family: var(--mono); font-size: 12px; letter-spacing: 1px;
     color: var(--cyan);
     background: rgba(0,240,255,0.06);
@@ -1276,10 +1334,11 @@
     background: var(--cyan); border-color: var(--cyan);
     box-shadow: 0 0 14px rgba(0,240,255,0.6);
   }
-  .tb-btn .tb-icon { font-size: 14px; line-height: 1; }
+  .tb-btn .tb-icon { font-size: 14px; line-height: 1; flex: 0 0 auto; }
+  .tb-btn .tb-text { white-space: nowrap; }
   .tb-btn .tb-idx {
     font-size: 9px; color: var(--dim); opacity: .7;
-    margin-left: 2px; letter-spacing: 0;
+    margin-left: 2px; letter-spacing: 0; flex: 0 0 auto; white-space: nowrap;
   }
   .tb-btn.active .tb-idx { color: rgba(4,6,12,0.6); }
   /* 网页「全关」按钮：破坏性操作，悬停转红提示 */
@@ -1623,11 +1682,15 @@
   .trace-loading .tdot {
     width: 5px; height: 5px; border-radius: 50%; background: var(--cyan);
     box-shadow: 0 0 7px var(--cyan); animation: trace-bounce 1s infinite ease-in-out;
+    will-change: transform, opacity;
   }
   .trace-loading .tdot:nth-child(2) { animation-delay: .15s; }
   .trace-loading .tdot:nth-child(3) { animation-delay: .3s; }
   @keyframes trace-bounce { 0%,80%,100% { transform: translateY(0); opacity: .4; } 40% { transform: translateY(-5px); opacity: 1; } }
   .trace-loading-label { margin-left: 3px; }
+  @media (prefers-reduced-motion: reduce) {
+    .trace-loading .tdot { animation: none; opacity: .8; }
+  }
 
   /* ===== 工具调用（简略视图）===== */
   .trace-mcp-count { font-size: 9px; color: var(--dim); margin-left: 6px; letter-spacing: .5px; }
@@ -2179,6 +2242,28 @@
      · MCP 浮层在中/小屏改为“底部抽屉”，与居中对话窗互斥而非悄悄压住；
      · 所有浮层统一 clamp 进视口。
    ========================================================= */
+
+/* —— task-bar 自适应收缩（窄于 ~1600 起逐步收敛，始终单行不出界）——
+   悬停按钮有 title 提示，收敛为图标态也不影响辨识 */
+@media (max-width: 1640px) {
+  .task-bar { gap: 6px; padding: 6px 8px; }
+  .task-bar .tb-label { display: none; }
+  .tb-btn { padding: 6px 9px; gap: 5px; }
+}
+@media (max-width: 1380px) {
+  .tb-btn .tb-idx { display: none; }
+  .tb-btn { padding: 6px 10px; }
+}
+@media (max-width: 1260px) {
+  .tb-btn { padding: 8px; gap: 0; }
+  .tb-btn .tb-text { display: none; }
+}
+
+/* 中等屏（<1680）：左下 HUD 抬到任务栏之上，避免 850px 文字态任务栏
+   水平压住 hud.bl（分车间：任务栏占底部车道、HUD 让位为角落状态徽标） */
+@media (max-width: 1680px) and (min-width: 641px) {
+  .hud.bl { bottom: 96px; }
+}
 
 /* —— 中屏（≤1099）：顶部带收敛 + MCP 底部抽屉 —— */
 @media (max-width: 1099px) {
@@ -3021,5 +3106,25 @@
     border-color: rgba(255,207,77,0.3);
   }
   .chat-source-footer .src-memory-chip.tool:hover { box-shadow: 0 0 8px rgba(255,207,77,0.35); }
+
+  /* ===== Mac Chrome 专属优化 =====
+     Mac 上 backdrop-filter 走 CPU 路径，思考动画期间 tdot 持续 opacity/transform
+     变化会触发整层重绘，体感卡顿。这里关闭主要面板/浮层的 backdrop-filter，
+     改用更深的不透明背景补偿视觉。其它平台完全不受影响（标记由 main.jsx 注入）。
+     选择器用 .mac-chrome 而非 body.mac-chrome：main.jsx 把类挂在 <html> 上，
+     不限定父级更稳健（也兼容挂到 body 的写法）。 */
+  .mac-chrome .chat-panel,
+  .mac-chrome .panel,
+  .mac-chrome .float-panel,
+  .mac-chrome .mcp-panel,
+  .mac-chrome .form-switch {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .mac-chrome .chat-panel { background: rgba(6,10,18,0.94); }
+  .mac-chrome .panel      { background: rgba(8,14,26,0.82); }
+  .mac-chrome .float-panel { background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)); }
+  .mac-chrome .mcp-panel   { background: linear-gradient(180deg, rgba(8,16,30,0.98), rgba(4,10,20,0.99)); }
+  .mac-chrome .form-switch { background: rgba(8,14,26,0.82); }
 
 

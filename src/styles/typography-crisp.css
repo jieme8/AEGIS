@@ -255,3 +255,24 @@ body {
   font-family: "SFMono-Regular", ui-monospace, Menlo, Consolas,
                "Microsoft YaHei", "微软雅黑", monospace;
 }
+
+/* ---------------------------------------------------------------
+ * 10) Mac Chrome 专属：关闭面板 backdrop-filter（性能）
+ *    ----------------------------------------------------------------
+ *    触发：仅当 <html class="mac-chrome">（由 src/main.jsx 注入；
+ *          Mac + Chrome，非 Mac Chrome 不打标记 → 本段整体不生效）。
+ *    原因：Mac 上 backdrop-filter 重绘代价高，本文件第 3/5.5 条例外，
+ *    面板 blur 用了 !important。这里用更高特异性 + !important 压掉它。
+ *    ------------------------------------------------------------- */
+.mac-chrome .panel,
+.mac-chrome .float-panel,
+.mac-chrome .mcp-panel,
+.mac-chrome .oil {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+/* 关 blur 后用更高的不透明底色补偿 "毛玻璃" 质感 */
+.mac-chrome .panel      { background: rgba(8,14,26,0.82) !important; }
+.mac-chrome .float-panel { background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)) !important; }
+.mac-chrome .mcp-panel   { background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)) !important; }
+.mac-chrome .oil         { background: rgba(8,14,26,0.82) !important; }

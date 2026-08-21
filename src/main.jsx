@@ -11,15 +11,22 @@ import "@fontsource/jetbrains-mono/700.css";
 import "./styles/typography-crisp.css"; // 字体清晰度专项优化（非破坏式，可整体移除）
 import App from "./App.jsx";
 
-// Windows 专属标记：仅当运行在 Windows 时给 <html> 打 data-os="win"，
-// 由 typography-crisp.css 的 [data-os="win"] 规则启用「中文→微软雅黑」回退。
-// 非 Windows 环境不落标记，字体栈保持原样，零影响。
+// 平台标记：仅当运行在 Windows / Mac+Chrome 时给 <html> 打 data-os / mac-chrome 类。
+// - data-os="win"  → typography-crisp.css 启用「中文→微软雅黑」回退
+// - mac-chrome     → cyber.css 关闭 chat-panel/面板类的 backdrop-filter（Mac 上 backdrop 重绘代价高）
+//                   特别是思考动画期间，三个 tdot 持续 opacity/transform 变化，
+//                   backdrop-filter 会让浏览器反复重绘整层，体感卡顿。
+// 非 Windows / 非 Mac Chrome 不落标记，零影响。
 (function setOsClass() {
   try {
     const ua = navigator.userAgent || "";
     const uaPlatform = (navigator.userAgentData && navigator.userAgentData.platform) || "";
     const isWin = /Win/i.test(ua) || /Win/i.test(uaPlatform);
     if (isWin) document.documentElement.setAttribute("data-os", "win");
+    // Mac Chrome：Safari 不要走这条（Safari backdrop 性能不弱，且要走 macOS 原生毛玻璃观感）
+    const isMac = /Mac/i.test(uaPlatform) || (/Mac/i.test(ua) && !/iPhone|iPad/i.test(ua));
+    const isChrome = /Chrome|CriOS/i.test(ua) && !/Edg|OPR|Firefox/i.test(ua);
+    if (isMac && isChrome) document.documentElement.classList.add("mac-chrome");
   } catch (e) {
     /* 环境不支持时静默跳过 */
   }

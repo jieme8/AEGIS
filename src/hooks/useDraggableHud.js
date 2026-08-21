@@ -22,15 +22,14 @@ export function useDraggableHud() {
       .filter((i) => i.el);
     if (!items.length) return;
 
-    // 转为 left/top 坐标定位（清除角/居中依赖）
+    // 转为 left/top 坐标定位（清除角/居中依赖，含 translateX(-50%) 的居中 transform）
     function toCoordMode(it) {
       const r = it.el.getBoundingClientRect();
       it.el.style.left = r.left + "px";
       it.el.style.top = r.top + "px";
       it.el.style.right = "auto";
       it.el.style.bottom = "auto";
-      // form-switch 用 translateX(-50%) 居中，需清除以免偏移
-      if (it.key === "fx-form-switch") it.el.style.transform = "none";
+      it.el.style.transform = "none"; // text: form-switch / task-bar 用 translateX(-50%) 居中，需清除以免双重偏移
     }
 
     function apply(it, x, y) {
@@ -47,15 +46,18 @@ export function useDraggableHud() {
         const raw = localStorage.getItem(LS_PREFIX + it.key);
         if (raw) {
           const o = JSON.parse(raw);
-          if (o && typeof o.x === "number") return o;
+          // 仅接受 v2 格式；旧版坐标可能含 resize 发散 bug 产生的脏值，
+          // 直接作废清除，让元素回到 CSS 定位（任务栏居中）以免错位/重叠。
+          if (o && typeof o.x === "number" && o.v === 2) return o;
+          localStorage.removeItem(LS_PREFIX + it.key);
         }
-      } catch (e) { /* ignore */ }
+      } catch (e) { localStorage.removeItem(LS_PREFIX + it.key); }
       return null;
     }
     function save(it) {
       try {
         const r = it.el.getBoundingClientRect();
-        localStorage.setItem(LS_PREFIX + it.key, JSON.stringify({ x: r.left, y: r.top }));
+        localStorage.setItem(LS_PREFIX + it.key, JSON.stringify({ x: r.left, y: r.top, v: 2 }));
       } catch (e) { /* ignore */ }
     }
 
@@ -96,9 +98,13 @@ export function useDraggableHud() {
 
     items.forEach((it) => it.el.addEventListener("pointerdown", onDown));
 
-    // 视口变化重新约束，防止越界
+    // 视口变化重新约束，防止越界。
+    // 仅作用于已被拖成 left/top 坐标定位（存在内联坐标）的元素；
+    // 仍由 CSS 定位（如 task-bar 居中 / form-switch 居中）的元素绝不写内联样式，
+    // 交给响应式 CSS 断点收敛，避免 resize 时把居中元素越写越偏（发散偏移）。
     function onResize() {
       items.forEach((it) => {
+        if (!it.el.style.left) return;
         const r = it.el.getBoundingClientRect();
         apply(it, r.left, r.top);
       });
