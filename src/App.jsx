@@ -15,7 +15,7 @@ import { SettingsPanel } from "./components/viz/SettingsPanel.jsx";
 import { TaskBar } from "./components/viz/TaskBar.jsx";
 import { HackerStreamZone } from "./components/viz/HackerStreamZone.jsx";
 import { RingHotZone, BarsHotZone } from "./components/viz/DevZones.jsx";
-import { Hud, ChatToggle, McpToggle, ScreenSizeBadge } from "./components/hud/Hud.jsx";
+import { Hud, ChatToggle, McpToggle, ScreenSizeBadge, LayoutToggle } from "./components/hud/Hud.jsx";
 import { ChatPanel } from "./components/chat/ChatPanel.jsx";
 import { McpPanel } from "./components/mcp/McpPanel.jsx";
 import { ImageWindow } from "./components/viz/ImageWindow.jsx";
@@ -30,6 +30,7 @@ import { useOilPrice } from "./lib/oilPrice.js";
 import { BootOverlay } from "./components/boot/BootOverlay.jsx";
 import { WEBVIEWER_EVENT, urlKey } from "./lib/webViewer.js";
 import { BOOT_MS, SEQUENCE } from "./lib/bootTimeline.js";
+import { defaultLayoutMode } from "./lib/viewport.js";
 
 // 入场时序 el → 真实 DOM 选择器（与 bootTimeline.SEQUENCE 一一对应）
 const SEQ_SELECTOR = {
@@ -67,6 +68,27 @@ export default function App() {
   const [flowOpen, setFlowOpen] = useState(false);
   // 设置窗口开合状态：点击任务栏「设置」打开，窗口内可关闭
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // 排版布局模式：spread=宽屏多栏 / stack=紧凑单栏。
+  // 默认按视口尺寸自动定（宽屏→spread，窄屏→stack），用户可在 hud-bl 手动切换并持久化。
+  const [layoutMode, setLayoutMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem("aegis:layout");
+      if (saved === "spread" || saved === "stack") return saved;
+    } catch (_) {}
+    return defaultLayoutMode();
+  });
+  useEffect(() => {
+    document.body.dataset.layout = layoutMode;
+    try {
+      localStorage.setItem("aegis:layout", layoutMode);
+    } catch (_) {}
+    // 通知各浮层：进入紧凑模式即应用该模式的默认布局（显隐 + 位置）。
+    window.dispatchEvent(
+      new CustomEvent("layoutmodechange", { detail: { mode: layoutMode } })
+    );
+  }, [layoutMode]);
+  const onToggleLayout = () =>
+    setLayoutMode((m) => (m === "spread" ? "stack" : "spread"));
   // 网页查看器：每个网页单独一个独立浮层（单窗单页）；再来一个网页再弹一个新窗口。
   // 由 jarvis:open-url 事件驱动；手动（任务栏「网页」）也会弹出新窗口。
   const [viewers, setViewers] = useState([]); // [{ id, url, x, y, open }]
@@ -212,6 +234,9 @@ export default function App() {
         <div><span className="k">GAIN</span> <span className="v mag">+0.0dB</span></div>
         <ScreenSizeBadge />
       </Hud>
+
+      {/* 布局切换开关：独立停靠右上角，点击在「宽屏多栏 / 紧凑单栏」间切换 */}
+      <LayoutToggle mode={layoutMode} onToggle={onToggleLayout} />
 
       {/* 对话 / MCP 的开关触发器（原 HUD 上的可见按钮已移除，
           改由底部任务栏承载；这里仅保留隐藏 DOM 钩子供任务栏点击） */}

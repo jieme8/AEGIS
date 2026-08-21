@@ -66,7 +66,23 @@ export function ResizeHandles() {
 }
 
 export function ChatPanel({ imageOpen, onToggleImage }) {
-  const { trace, traceOpen, closeTrace, toggleTrace, openTrace, panelOpen, send, pendingAction, clearPendingAction } = useChatController();
+  const {
+    trace,
+    traceOpen,
+    reqMcpOpen,
+    promptReasoningOpen,
+    memoryOpen,
+    closeTrace,
+    toggleTrace,
+    openTrace,
+    closeReqMcp,
+    closePromptReasoning,
+    closeMemory,
+    panelOpen,
+    send,
+    pendingAction,
+    clearPendingAction,
+  } = useChatController();
   const [wizardOpen, setWizardOpen] = useState(false);
 
   // image-window 与对话流联动：打开配图窗口时，对话流浮层也一并显示
@@ -100,7 +116,15 @@ export function ChatPanel({ imageOpen, onToggleImage }) {
         <ResizeHandles />
       </aside>
       {/* 独立浮层：经 Portal 挂到 body，不受聊天面板（含 backdrop-filter）限制，可在整页任意拖动 */}
-      <TracePanels trace={trace} open={traceOpen} onClose={closeTrace} />
+      <TracePanels
+        trace={trace}
+        reqMcpOpen={reqMcpOpen}
+        promptReasoningOpen={promptReasoningOpen}
+        memoryOpen={memoryOpen}
+        onCloseReqMcp={closeReqMcp}
+        onClosePromptReasoning={closePromptReasoning}
+        onCloseMemory={closeMemory}
+      />
       <TravelWizard open={wizardOpen} onClose={() => setWizardOpen(false)} send={send} />
     </>
   );

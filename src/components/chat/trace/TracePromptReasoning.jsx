@@ -13,7 +13,7 @@ import { sanitizeImageRefs } from "../../../lib/traceSanitize.js";
  *   - 分区② 思考过程：模型的 reasoning_content（流式滚动、LoadingDots、待机态）
  * 两个分区各自用 useContentPulse，保留「哪块在更新哪块亮」的流光语义。
  */
-export function TracePromptReasoning({ trace, open, onClose, index = 0 }) {
+export function TracePromptReasoning({ trace, open, onClose, index = 0, defaultPos }) {
   const t = trace || {};
   const prompt = t.prompt || {};
   const reply = t.reply || {};
@@ -75,7 +75,7 @@ export function TracePromptReasoning({ trace, open, onClose, index = 0 }) {
     <FloatingPanel
       devId="trace-prompt-reasoning"
       title="对话流·提示词与思考"
-      defaultPos={{ x: 970, y: 80 }}
+      defaultPos={defaultPos || { x: 970, y: 80 }}
       width={320}
       open={open}
       onClose={onClose}

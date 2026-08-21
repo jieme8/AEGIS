@@ -51,3 +51,19 @@ export function ScreenSizeBadge() {
     </div>
   );
 }
+
+// 排版布局切换开关：右上角紧凑图标按钮，在「宽屏多栏 / 紧凑单栏」间切换。
+export function LayoutToggle({ mode, onToggle }) {
+  const isSpread = mode === "spread";
+  return (
+    <button
+      type="button"
+      className={"layout-toggle" + (isSpread ? " spread" : " stack")}
+      aria-label="切换排版布局"
+      title={isSpread ? "宽屏多栏（点击切紧凑）" : "紧凑单栏（点击切宽屏）"}
+      onClick={onToggle}
+    >
+      <span className="lt-icon">{isSpread ? "▭" : "▤"}</span>
+    </button>
+  );
+}

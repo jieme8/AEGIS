@@ -50,9 +50,9 @@ import { parseGeoMarker, parseRoute, parseTextSearch, parseSearchDetail, validat
  * 逻辑与原 chat 脚本 1:1 移植：居中前景主窗口，音频可视化退为背景氛围层。
  * 回复走真实大模型（LongCat）流式输出；接口不可用（网络/密钥/限流）时自动回退本地模拟。
  *
- * 过程可视化：通过 React 状态 trace / traceOpen 暴露「当前对话请求的完整流水线」
- * （请求状态 → 附加上下文 → 实际提示词 → 流式回复），由 ChatTraceDrawer 浮层消费。
- * 浮层在对话发起瞬间自动弹出（setTraceOpen(true)），无需按钮触发。
+ * 过程可视化：通过 React 状态 trace / 三个独立浮层开合状态暴露「当前对话请求的完整流水线」
+ * （请求状态 → 附加上下文 → 实际提示词 → 流式回复），由 TracePanels 浮层消费。
+ * 浮层在对话发起瞬间自动弹出（紧凑模式仅展开 trace-prompt-reasoning），无需按钮触发。
  */
 // 复制文本到剪贴板，并在按钮上给出「已复制」瞬时反馈（不依赖全局 toast）
 const COPY_ICON =
@@ -293,15 +293,34 @@ export function useChatController() {
   const [trace, setTrace] = useState(null);
   const traceRef = useRef(trace);
   useEffect(() => { traceRef.current = trace; }, [trace]);
-  const [traceOpen, setTraceOpen] = useState(false);
+  // 对话流三个浮层各自独立的开合状态（原共用一个 traceOpen）。
+  //   reqMcpOpen        → trace-req-mcp（请求状态 + MCP 工具调用）
+  //   promptReasoningOpen → trace-prompt-reasoning（提示词 + 思考过程）
+  //   memoryOpen        → trace-memory（记忆召回）
+  const [reqMcpOpen, setReqMcpOpen] = useState(false);
+  const [promptReasoningOpen, setPromptReasoningOpen] = useState(false);
+  const [memoryOpen, setMemoryOpen] = useState(false);
+  // 派生：任一浮层开着即为「对话流开」（供头部按钮高亮）
+  const traceOpen = reqMcpOpen || promptReasoningOpen || memoryOpen;
   const [panelOpen, setPanelOpen] = useState(true);   // 面板开合由 React 状态驱动，避免重渲染把 className 写回导致关闭失效
   // —— AI 主动给出的"行动项"：终态文本命中关键词 → 在 ChatMessages 下发挂一个 inline 按钮；
   //    用户点了 → 弹 TravelWizard + 自动 clearPendingAction；用户发了任何 user 消息 → 也自动 clear。
   //    null = 不显示。设计原则：不写死常显入口，按对话上下文自适应出现/消失。
   const [pendingAction, setPendingAction] = useState(null);
   const clearPendingAction = () => setPendingAction(null);
-  const closeTrace = () => setTraceOpen(false);
-  const toggleTrace = () => setTraceOpen((v) => !v);   // 一键显示/隐藏 5 个对话流浮层
+  // 一键关闭全部对话流浮层
+  const closeTrace = () => {
+    setReqMcpOpen(false);
+    setPromptReasoningOpen(false);
+    setMemoryOpen(false);
+  };
+  // 头部「对话流」按钮：一键开/关三个浮层（保留原整体切换体验）
+  const toggleTrace = () => {
+    const next = !traceOpen;
+    setReqMcpOpen(next);
+    setPromptReasoningOpen(next);
+    setMemoryOpen(next);
+  };
 
   useEffect(() => {
     "use strict";
@@ -413,11 +432,14 @@ export function useChatController() {
 
     // --- 默认几何（不持久化：每次刷新回归默认坐标与尺寸） ---
     function defaultRect() {
-      // 默认位置固定为 (1300, 80)；尺寸仍随视口收敛，避免极小窗口溢出。
+      // 宽屏 spread 默认 (1310, 80)；紧凑 stack 默认 (1000, 80)；尺寸 510×670。
+      // 仅做视口边界收敛，避免极小窗口溢出；正常屏幕即取对应模式默认值。
       const vw = window.innerWidth, vh = window.innerHeight;
+      const compact = typeof document !== "undefined" && document.body.dataset.layout === "stack";
+      const x = compact ? 1000 : 1310;
       const w = Math.min(510, Math.max(320, vw - 32));
-      const h = Math.min(700, Math.max(360, vh - 154));
-      return { x: 1300, y: 80, w, h };
+      const h = Math.min(670, Math.max(320, vh - 120));
+      return { x, y: 80, w, h };
     }
 
     // --- 拖拽（DragController）---
@@ -1181,7 +1203,17 @@ export function useChatController() {
         },
       };
       setTrace(traceInit);
-      setTraceOpen(true);                     // 对话发起瞬间自动弹出浮层
+      // 对话发起瞬间自动弹出浮层。紧凑模式下仅默认展开「提示词+思考」（trace-prompt-reasoning），
+      // 其余两个（trace-req-mcp / trace-memory）默认隐藏，避免小屏被多个浮层挤占。
+      if (typeof document !== "undefined" && document.body.dataset.layout === "stack") {
+        setPromptReasoningOpen(true);
+        setReqMcpOpen(false);
+        setMemoryOpen(false);
+      } else {
+        setReqMcpOpen(true);
+        setPromptReasoningOpen(true);
+        setMemoryOpen(true);
+      }
 
       // ---- 流式渲染本地状态 ----
       let answer = "";
@@ -1516,7 +1548,9 @@ export function useChatController() {
       messagesEl.innerHTML = "";
       try { localStorage.removeItem(CONFIG.storageKey); } catch (e) { /* 忽略 */ }
       setTrace(null);
-      setTraceOpen(false);
+      setReqMcpOpen(false);
+      setPromptReasoningOpen(false);
+      setMemoryOpen(false);
       // 通知 App.jsx 关闭配图窗口（image-window）
       window.dispatchEvent(new CustomEvent("jarvis:close-all-panels"));
       if (clearBtn) clearBtn.disabled = true;
@@ -1573,10 +1607,58 @@ export function useChatController() {
       if (clearBtn) clearBtn.disabled = state.history.length === 0;
       setChat(true);            // 默认作为主对话窗口呈现
       // 不自动聚焦输入框，避免移动端加载即弹出键盘；用户点击输入框再聚焦
+
+      // 每次切换布局模式即刷新对话流浮层的默认显隐（两种模式各自的预设）：
+      //   紧凑 stack → 仅展开「提示词+思考」，隐藏 trace-req-mcp / trace-memory
+      //   宽屏 spread → 三个浮层全部展开
+      const applyLayoutPreset = (mode) => {
+        if (mode === "stack") {
+          setPromptReasoningOpen(true);
+          setReqMcpOpen(false);
+          setMemoryOpen(false);
+        } else {
+          setReqMcpOpen(true);
+          setPromptReasoningOpen(true);
+          setMemoryOpen(true);
+        }
+      };
+      const onLayoutModeChange = (e) => {
+        if (e.detail && (e.detail.mode === "stack" || e.detail.mode === "spread")) {
+          applyLayoutPreset(e.detail.mode);
+        }
+      };
+      window.addEventListener("layoutmodechange", onLayoutModeChange);
+      // 初始即套用当前模式的预设
+      applyLayoutPreset(document.body.dataset.layout === "stack" ? "stack" : "spread");
     }
 
     init();
   }, []);
 
-  return { trace, traceOpen, closeTrace, toggleTrace, openTrace: () => setTraceOpen(true), panelOpen, send: (text) => handleSend(text), pendingAction, clearPendingAction };
+  return {
+    trace,
+    traceOpen,
+    reqMcpOpen,
+    promptReasoningOpen,
+    memoryOpen,
+    closeTrace,
+    toggleTrace,
+    openTrace: () => {
+      // 紧凑模式下「对话流」展开仅默认开 trace-prompt-reasoning（与自动弹出一致）
+      if (typeof document !== "undefined" && document.body.dataset.layout === "stack") {
+        setPromptReasoningOpen(true);
+      } else {
+        setReqMcpOpen(true);
+        setPromptReasoningOpen(true);
+        setMemoryOpen(true);
+      }
+    },
+    closeReqMcp: () => setReqMcpOpen(false),
+    closePromptReasoning: () => setPromptReasoningOpen(false),
+    closeMemory: () => setMemoryOpen(false),
+    panelOpen,
+    send: (text) => handleSend(text),
+    pendingAction,
+    clearPendingAction,
+  };
 }

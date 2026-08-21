@@ -1917,34 +1917,36 @@
 
   /* 聚合卡片呼吸灯：web_search 被调用时整张卡片脉冲 */
   .mcp-row-aggregate-calling {
-    border-color: var(--magenta) !important;
-    background: linear-gradient(135deg, rgba(255,0,170,0.18), rgba(0,240,255,0.10)) !important;
-    animation: mcp-agg-breathe 1.6s ease-in-out infinite;
+    border-color: #ff00aa !important;
+    background: linear-gradient(135deg, rgba(255,0,170,0.22), rgba(0,240,255,0.12)) !important;
+    animation: mcp-agg-breathe 1.2s ease-in-out infinite !important;
     box-shadow:
-      0 0 12px rgba(255,0,170,0.5),
-      0 0 24px rgba(255,0,170,0.25),
-      inset 0 0 10px rgba(255,0,170,0.2) !important;
+      0 0 16px rgba(255,0,170,0.6),
+      0 0 32px rgba(255,0,170,0.3),
+      inset 0 0 12px rgba(255,0,170,0.25) !important;
   }
   .mcp-row-aggregate-used {
-    border-color: rgba(255,0,170,0.55) !important;
+    border-color: rgba(255,0,170,0.6) !important;
     background: linear-gradient(135deg, rgba(255,0,170,0.10), rgba(0,240,255,0.06)) !important;
     box-shadow:
-      0 0 6px rgba(255,0,170,0.3),
-      inset 0 0 6px rgba(255,0,170,0.12) !important;
+      0 0 8px rgba(255,0,170,0.35),
+      inset 0 0 6px rgba(255,0,170,0.15) !important;
   }
   @keyframes mcp-agg-breathe {
     0%, 100% {
       box-shadow:
-        0 0 10px rgba(255,0,170,0.45),
-        0 0 20px rgba(255,0,170,0.20),
-        inset 0 0 8px rgba(255,0,170,0.18);
+        0 0 12px rgba(255,0,170,0.45),
+        0 0 24px rgba(255,0,170,0.2),
+        inset 0 0 8px rgba(255,0,170,0.2);
+      border-color: rgba(255,0,170,0.7);
     }
     50% {
       box-shadow:
-        0 0 18px rgba(255,0,170,0.75),
-        0 0 36px rgba(255,0,170,0.35),
-        0 0 56px rgba(0,240,255,0.15),
-        inset 0 0 14px rgba(255,0,170,0.30);
+        0 0 24px rgba(255,0,170,0.85),
+        0 0 48px rgba(255,0,170,0.4),
+        0 0 72px rgba(0,240,255,0.2),
+        inset 0 0 18px rgba(255,0,170,0.35);
+      border-color: #ff00aa;
     }
   }
 
@@ -3253,5 +3255,96 @@
   .mac-chrome .float-panel { background: linear-gradient(180deg, rgba(10,18,32,0.98), rgba(6,11,22,0.98)); }
   .mac-chrome .mcp-panel   { background: linear-gradient(180deg, rgba(8,16,30,0.98), rgba(4,10,20,0.99)); }
   .mac-chrome .form-switch { background: rgba(8,14,26,0.82); }
+
+
+/* =====================================================================
+   ============ 排版布局模式层（由 body[data-layout] 驱动） ============
+   spread = 宽屏多栏（桌面四角岛屿 + MCP 左栏 / 中部舞台 / 对话右栏）
+   stack  = 紧凑单栏（激活浮窗聚焦居中大窗，其余由任务栏入口控制）
+   与既有 @media 断点正交：仅作为叠加作用域，不改写任何断点规则。
+   stack 下用 !important 覆盖 JS 写入的 inline left/top/width/height。
+   ===================================================================== */
+
+/* —— 布局切换：右上角紧凑图标按钮（克制、不占空间） —— */
+.layout-toggle {
+  position: fixed; top: 14px; right: 14px; z-index: 30;
+  pointer-events: auto;
+  width: 26px; height: 26px;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-family: var(--mono);
+  font-size: 14px; line-height: 1;
+  color: var(--cyan);
+  background: rgba(6,12,22,0.5);
+  border: 1px solid rgba(0,240,255,0.25);
+  border-radius: 6px;
+  box-shadow: 0 0 10px rgba(0,240,255,0.1);
+  backdrop-filter: blur(3px);
+  cursor: pointer;
+  transition: color .18s, border-color .18s, box-shadow .18s, background .18s;
+}
+.layout-toggle:hover {
+  color: #eafdff;
+  border-color: rgba(0,240,255,0.55);
+  box-shadow: 0 0 14px rgba(0,240,255,0.28);
+  background: rgba(0,240,255,0.08);
+}
+/* 紧凑态：品红描边，提示当前为另一种布局 */
+body[data-layout="stack"] .layout-toggle {
+  color: var(--magenta);
+  border-color: rgba(255,43,214,0.3);
+  box-shadow: 0 0 10px rgba(255,43,214,0.12);
+}
+body[data-layout="stack"] .layout-toggle:hover {
+  color: #ffe6fb;
+  border-color: rgba(255,43,214,0.55);
+  box-shadow: 0 0 14px rgba(255,43,214,0.3);
+  background: rgba(255,43,214,0.08);
+}
+
+/* 紧凑模式下：主要浮窗收为「窄栏 + 上下留白」的紧凑列（chat-panel 保持 JS 默认几何，
+   不在此强制覆盖，确保宽屏/紧凑下默认坐标一致）。用 !important 覆盖其它浮窗内联定位。 */
+body[data-layout="stack"] .mcp-panel {
+  left: 16px !important; right: auto !important; top: 80px !important;
+  bottom: auto !important; width: 305px !important;
+  max-width: none !important; height: 600px !important;
+}
+body[data-layout="stack"] .image-window {
+  left: 330px !important; right: auto !important; top: 80px !important;
+  bottom: auto !important; width: 320px !important;
+  height: 418px !important; max-height: none !important;
+}
+body[data-layout="stack"] .map-window,
+body[data-layout="stack"] .feat-window,
+body[data-layout="stack"] .flow-window {
+  left: auto !important; right: 12px !important; top: 72px !important;
+  bottom: 72px !important; width: min(440px, 92vw) !important;
+  height: auto !important; max-height: calc(100vh - 144px) !important;
+}
+body[data-layout="stack"] .msw-panel {
+  left: auto !important; right: 12px !important; top: 72px !important;
+  bottom: 72px !important; width: min(440px, 92vw) !important;
+  height: auto !important;
+}
+/* 左下 HUD：宽屏/紧凑统一坐标 left:10 bottom:700（覆盖媒体查询的 bottom 覆盖） */
+body[data-layout] .hud.bl {
+  left: 10px !important; right: auto !important; bottom: 700px !important;
+  top: auto !important;
+}
+/* 布局切换开关：独立停靠右上角（不再放在 hud-bl 内） */
+.layout-toggle {
+  position: fixed; top: 14px; right: 14px; z-index: 30;
+  pointer-events: auto;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 4px 9px; border: 1px solid rgba(0,240,255,0.3);
+  border-radius: 3px; color: var(--cyan);
+  background: var(--panel);
+  box-shadow: 0 0 18px rgba(0,240,255,0.12), inset 0 0 12px rgba(0,240,255,0.06);
+  backdrop-filter: blur(3px);
+  text-shadow: 0 0 8px rgba(0,240,255,0.5);
+  user-select: none;
+}
+.layout-toggle:hover { background: rgba(0,240,255,0.1); }
+.layout-toggle .lt-label { font-size: 10px; letter-spacing: 1px; }
 
 
